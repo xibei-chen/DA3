@@ -250,7 +250,8 @@ for(i in 1:length(cv)){
         rmse_cv[i] <- sqrt((get(cv[i])$resample[[1]][1]^2 +
                                     get(cv[i])$resample[[1]][2]^2 +
                                     get(cv[i])$resample[[1]][3]^2 +
-                                    get(cv[i])$resample[[1]][4]^2)/4)
+                                    get(cv[i])$resample[[1]][4]^2 +
+                                    get(cv[i])$resample[[1]][5]^2)/5)
 }
 
 # Summarize results
@@ -423,7 +424,7 @@ ggplot(data = data, aes(x=weight,y=wage)) +
 From the graphs we can tell that cubic weight works better than quadratic weight especially for extreme values.
 
 \newpage
-## Comapre models according to RMSE and BIC for the full sample
+## Compare models according to RMSE and BIC for the full sample
 ```{r, echo=FALSE}
 # Evaluation of the models: using all the sample
 fitstat_register("k", function(x){length( x$coefficients ) - 1}, "No. Variables")
@@ -467,7 +468,7 @@ kable( etable( reg1, reg2, reg3, reg4,
 For the full sample, Model 4 is the best according to RMSE, while Model 2 is the best according to BIC.
 
 \newpage
-## Comapre models in terms of 5-fold Cross-validated RMSE
+## Compare models in terms of 5-fold Cross-validated RMSE
 ```{r, echo=FALSE}
 kable(cv_mat, 
       "latex", booktabs = TRUE, 
