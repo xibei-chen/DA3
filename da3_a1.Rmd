@@ -288,14 +288,14 @@ m_comp <- tibble( model = models ,
 ggplot( m_comp , aes( x = complexity , y = RMSE ) ) +
         geom_point(color='#e85d04',size=2) +
         geom_line(color='#2a9d8f',size=0.5)+
-        labs(x='Number of predictor variables',y='Averaged RMSE on test samples',
+        labs(x='Number of Predictor Variables',y='Averaged RMSE on Test Samples',
              title='Prediction Performance and Model Compexity') +
         xlim(0,20) +
         theme_minimal() +
         theme(plot.title = element_text(size=8, face = "bold"),
               axis.title=element_text(size=8))
 ```
-In terms of 5-fold Cross-validated RMSE, Model 3 is the best (see details in Appendix). And we can see from the above visual the relationship between model complexity and performance. The averaged RMSE tends to be smaller which means model performance tends to be better, as number of predictor variables gets larger from the beginning. However, after a certain point, the averaged RMSE tends to be larger which means the model performance tends to get worse, as number of predictor variables keeps getting larger, this is because too complex models tends to overfit the test sample hence do not give the best prediction for the population or the general pattern represented by the original data.
+In terms of 5-fold Cross-validated RMSE, Model 3 is the best (see details in Appendix). And from the above visual we can see the relationship between model complexity and performance. The smaller the averaged RMSE, the better the model performance. Therefore, model performance tends to get better as number of predictor variables gets larger from the beginning. However, after a certain point, model performance starts to get worse, as number of predictor variables keeps getting larger, this is because too complex models tends to overfit the test sample hence do not give the best prediction for the population or the general pattern represented by the original data.
 
 \newpage
 # Appendix
