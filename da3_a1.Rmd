@@ -196,7 +196,7 @@ data <- data %>%
 
 ```
 
-# Build 4 Models using linear regression with increasing model complexity
+# Build Models (using linear regression with increasing model complexity)
 
 ```{r, echo=FALSE}
 #######################################################
@@ -464,6 +464,7 @@ kable( etable( reg1, reg2, reg3, reg4,
 
 # BIC: Model2 is the best, RMSE: Model4 is the best
 ```
+For the full sample, Model 4 is the best according to RMSE, while Model 2 is the best according to BIC.
 
 \newpage
 ## Comapre models in terms of 5-fold Cross-validated RMSE
@@ -473,4 +474,4 @@ kable(cv_mat,
       caption = '5-fold Cross Validated RMSE') %>% kable_styling(latex_options = c("hold_position","scale_down"), font_size = 4)
 # 5-fold Cross-validated RMSE: Model3 is the best
 ```
-
+In terms of 5-fold Cross-validated RMSE, Model 3 is the best.
