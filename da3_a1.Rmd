@@ -2,7 +2,7 @@
 title: "Data Analysis 3 - Assignment 1"
 author: "Xibei Chen"
 date: "`r format(Sys.time(), '%d %B %Y')`"
-geometry: "left=1.5cm,right=1.5cm,top=1cm,bottom=1.5cm"
+geometry: "left=1.5cm,right=1.5cm,top=1.5cm,bottom=1.5cm"
 output: pdf_document
 ---
 
