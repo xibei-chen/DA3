@@ -1,0 +1,458 @@
+---
+title: "Data Analysis 3 - Assignment 1"
+author: "Xibei Chen"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+geometry: "left=1.5cm,right=1.5cm,top=0.1cm,bottom=1cm"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+# Clean environment
+rm(list=ls())
+
+# Load packages
+library(tidyverse)
+library(fixest)
+library(caret)
+library(modelsummary)
+library(grid)
+library(kableExtra)
+library(ggpubr)
+```
+
+## Introduction
+The aim of this assignment is to use [cps-earnings dataset](https://osf.io/g8p9j/) to build multiple predictive models using linear regression for hourly wage for **Computer and Mathematical Occupations**, compare model performance of these models in terms of (a) RMSE in the full sample, (b) cross-validated RMSE and (c) BIC in the full sample, and discuss the relationship between model complexity and performance.  
+
+## Data
+
+
+```{r, include=FALSE}
+#######################################################
+# 1) Data Import
+# Import data from web
+data_import <- read_csv( 'https://osf.io/4ay9x/download' ) 
+
+# Check the data table
+glimpse(data_import)
+
+#######################################################
+# 2) Data Cleaning
+# Select variables
+data <- data_import %>% select(occ2012,
+                               earnwke, 
+                               uhours,
+                               grade92,
+                               age,
+                               sex,
+                               marital,
+                               race,
+                               weight)
+
+# Check if there are missing values
+sum(is.na(data))
+
+# Filter observations
+# Occupation type: Computer and Mathematical Occupations
+# Weekly working hours greater than 20;
+# Weekly earning greater than 0;
+# Age greater than 24, less than 64;
+# Education categories Bachelor's, Master's or Doctorate degree.
+data <- data %>% filter(occ2012>=1005, occ2012<=1240,
+                        uhours>=20,
+                        earnwke>0,
+                        age>=24, age<=64,
+                        grade92 %in% c(43,44,46))
+```
+
+```{r, include=FALSE}
+#######################################################
+# 3) Exploratory Data Analysis
+# Check distributions of target variable - hourly wage
+p1 <- ggplot( data = data, aes( x = earnwke/uhours) )  +
+        geom_density(color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Hourly Wage (US$)') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" ) 
+
+# Check distributions of predictor variables
+# Distribution of variable - sex
+p2 <- ggplot( data = data, aes( x = as.factor(sex)) )  +
+        geom_bar(aes(y = (..count..)/sum(..count..)), color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Sex') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" ) 
+# Use male as reference category
+
+# Distribution of variable - marital 
+p3 <- ggplot( data = data, aes( x = as.factor(marital)) )  +
+        geom_bar(aes(y = (..count..)/sum(..count..)), color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Marital Status') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" )
+# Combine 1-3 as married, keep 4 as widowed, combine 5-6 as divorced or separated and keep 7 as never married
+# Use married as reference category
+
+# Distribution of variable - race
+p4 <- ggplot( data = data, aes( x = as.factor(race)) )  +
+        geom_bar(aes(y = (..count..)/sum(..count..)), color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Race') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" )
+# Keep 1 as white, 2 as black, 4 as asian, and the rest as others
+# Use white as reference category
+
+# Distribution of variable - degree
+p5 <- ggplot( data = data, aes( x = as.factor(grade92)) )  +
+        geom_bar(aes(y = (..count..)/sum(..count..)), color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Highest Degree') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" )
+# Use bachelor as reference category
+
+# Distribution of variable - age
+p6 <- ggplot( data = data, aes( x = age) )  +
+        geom_density(color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Age') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" )
+
+# Distribution of variable - weight
+p7 <- ggplot( data = data, aes( x = weight) )  +
+        geom_density(color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Weight') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" )
+```
+
+
+* Target variable: Hourly wage
+* Predictor variables: Sex(male as base category), Marital status(married as base category), Race(white as base category), Highest degree(bachelor as base category), Age(squared and cubic), Weight(squared and cubic).
+
+
+```{r, include=FALSE}
+#######################################################
+# 4) Data refactoring
+# hourly wage 
+data <- data %>%
+        mutate(wage=earnwke/uhours)
+
+# sex
+data <- data %>%
+        mutate(male = ifelse(sex == 1, 1, 0),
+               female = ifelse(sex == 2, 1, 0))
+
+# marital
+data <- data %>%
+        mutate(m = ifelse(marital %in% c(1,2,3), 1, 0),
+               w = ifelse(marital == 4, 1, 0),
+               sd = ifelse(marital %in% c(5,6), 1, 0),
+               nm = ifelse(marital == 7, 1, 0))
+
+# race
+data <- data %>% 
+        mutate(white = ifelse(race == 1, 1, 0),
+               black = ifelse(race == 2, 1, 0),
+               asian = ifelse(race == 4, 1, 0),
+               other = ifelse(race %in% c(1,2,4), 0, 1))
+
+# degree
+data <- data %>% 
+        mutate(bachelor = ifelse(grade92==43, 1, 0),
+               master = ifelse(grade92==44, 1, 0),
+               doctorate = ifelse(grade92==46, 1, 0))
+# age
+data <- data %>%
+        mutate(agesq = age^2,
+               agecu = age^3)
+
+# weight
+data <- data %>%
+        mutate(weightsq = weight^2,
+               weightcu = weight^3)
+
+```
+
+## Regression Analysis  - Predicting Hourly Wage
+
+```{r, echo=FALSE}
+#######################################################
+# 5A) Running linear regressions using all observations
+# Model 1: Linear regression on quadratic age
+model1 <- as.formula(wage ~ age + agesq)
+# Model 2: Multiple linear regressions: add sex(male as reference category) and degree(bachelor's as reference category)
+model2 <- as.formula(wage ~ age + agesq + female + master + doctorate)
+# Model 3: add race(white as reference category) and marital status(married as reference category)
+model3 <- as.formula(wage ~ age + agesq + female + master + doctorate + black + asian + other + w + sd + nm)
+# Model 4: add cubic age, cubic weight, interaction term of sex and age, and interaction term of sex and degree
+model4 <- as.formula(wage ~ age + agesq + agecu + female + master + doctorate + black + asian + other + w + sd + nm + weight + weightsq + weightcu + female*age + female*master + female*doctorate)
+
+# Running simple OLS
+reg1 <- feols(model1, data=data, vcov = 'hetero')
+reg2 <- feols(model2, data=data, vcov = 'hetero')
+reg3 <- feols(model3, data=data, vcov = 'hetero')
+reg4 <- feols(model4, data=data, vcov = 'hetero')
+```
+
+
+```{r, include=FALSE}
+#######################################################
+# 5B) Cross-validation for better evaluation of predictive performance
+# Simple k-fold cross validation setup:
+# 1) Use method for estimating the model: "lm" - linear model
+# 2) set number of folds to use 
+k <- 5
+
+# Use the 'train' function which allows many type of model training -> use cross-validation
+set.seed(369)
+cv1 <- train(model1, data, method = "lm", trControl = trainControl(method = "cv", number = k))
+# Check the output:
+cv1
+summary(cv1)
+cv1$results
+cv1$resample
+
+set.seed(369)
+cv2 <- train(model2, data, method = "lm", trControl = trainControl(method = "cv", number = k))
+set.seed(369)
+cv3 <- train(model3, data, method = "lm", trControl = trainControl(method = "cv", number = k))
+set.seed(369)
+cv4 <- train(model4, data, method = "lm", trControl = trainControl(method = "cv", number = k))
+
+# Calculate RMSE for each fold and the average RMSE as well
+cv <- c("cv1", "cv2", "cv3", "cv4")
+rmse_cv <- c()
+
+for(i in 1:length(cv)){
+        rmse_cv[i] <- sqrt((get(cv[i])$resample[[1]][1]^2 +
+                                    get(cv[i])$resample[[1]][2]^2 +
+                                    get(cv[i])$resample[[1]][3]^2 +
+                                    get(cv[i])$resample[[1]][4]^2)/4)
+}
+
+# Summarize results
+cv_mat <- data.frame(rbind(cv1$resample[4], "Average"),
+                     rbind(cv1$resample[1], rmse_cv[1]),
+                     rbind(cv2$resample[1], rmse_cv[2]),
+                     rbind(cv3$resample[1], rmse_cv[3]),
+                     rbind(cv4$resample[1], rmse_cv[4])
+)
+
+colnames(cv_mat)<-c("Resample","Model1", "Model2", "Model3", "Model4")
+cv_mat
+# 5 Fold Cross-validated RMSE: Model3 is the best
+```
+
+Build 4 Models using linear regression for target variable (hourly wage) with different predictors as follows:
+
+1. age and age squared;
+2. age, age squared, sex, and highest degree;
+3. age, age squared, sex, highest degree, race, and marital status;
+4. age, age squared, age cubic, sex, highest degree, race, marital status, weight, weight squared, weight cubic, interaction term of sex and age, interaction term of sex and highest degree.
+
+For the full sample, Model4 is the best according to RMSE, while Model2 is the best according to BIC.
+In terms of 5-fold Cross-validated RMSE, Model3 is the best, as we can see from below visual of the relationship between model complexity and performance.
+
+```{r, echo=FALSE, fig.dim=c(4,3)}
+# Show model complexity and out-of-sample RMSE performance
+m_comp <- c()
+models <- c("reg1", "reg2", "reg3", "reg4")
+for( i in 1 : length(cv) ){
+        m_comp[ i ] <- length( get( models[i] )$coefficient)  - 1 
+}
+
+m_comp <- tibble( model = models , 
+                  complexity = m_comp,
+                  RMSE = rmse_cv )
+
+ggplot( m_comp , aes( x = complexity , y = RMSE ) ) +
+        geom_point(color='#e85d04',size=2) +
+        geom_line(color='#2a9d8f',size=0.5)+
+        labs(x='Number of explanatory variables',y='Averaged RMSE on test samples',
+             title='Prediction performance and model compexity') +
+        theme_minimal() +
+        xlim(0,20)
+```
+\newpage
+## Appendix
+### Date Cleaning
+In the data cleaning process, I selected only the observations that meet the following criteria.
+
+* Occupation type: Computer and Mathematical Occupations;
+* Weekly working hours greater than 20;
+* Weekly earning greater than 0;
+* Age greater than 24, less than 64;
+* Education categories: Bachelor's, Master's or Doctorate degree.
+
+### Explain choice of predictors 
+
+1. Computer and Mathematical Occupations are traditionally male-dominated, which is also confirmed in the distribution graph of sex, so I assume sex might have something to do with wage; 
+2. Marital status can to some extent explain how much a person is dedicated to his or her job, which is just my assumption; 
+3. Race can cover for example immigration background, the pattern of racial discrimination if there is any, or if people of certain race is more likely to do well in Computer and Mathematical Occupations; 
+4. Highest degree might be very closely related one's wage, as it can explain how much academical achievement someone has; 
+5. Age is supposed to be positively related to wage, although the association turns to be weaker when one gets older; 
+6. I also included weight, which might seems odd at the first glance, but I was hoping that it can catch some information about one's health, for example diet habit or how much exercise one does. 
+
+### Descriptive Statistics of Quantitative Variables
+```{r, echo=FALSE}
+# Descriptive statistics of quantitative variables
+datasummary( (`Hourly Wage` = earnwke/uhours) +
+             (`Age` = age) +
+             (`Weight` = weight ) ~
+             Mean + Median + Min + Max + P25 + P75 + N, 
+             data = data ) %>% 
+             kable_styling(latex_options = c("HOLD_position","scale_down"))
+```
+
+\newpage
+### Distributions of target variable - hourly wage
+```{r, echo=FALSE, fig.width=4, fig.height=3,fig.align='center'}
+# Show distributions of target variable - hourly wage
+p1
+```
+
+### Distributions of predictor variables
+```{r, echo=FALSE, fig.align='center', fig.dim=c(8,6)}
+association_figs <- ggarrange(p2, p3, p4, p5, p6, p7,
+                              hjust = -0.6,
+                              ncol = 3, nrow = 2)
+association_figs
+```
+
+\newpage
+### Association between hourly wage and lowess age/quadratic age
+```{r, echo=FALSE, fig.dim=c(4,3), fig.align='center', message=FALSE}
+#######################################################
+# 5) Regression Analysis  - Predicting Hourly Wage
+# Lowess age with observations
+ggplot(data = data, aes(x=age, y=wage)) +
+        geom_point( color = '#3cc5a3', size = 2, alpha = 0.5) + 
+        geom_smooth(method="loess", se=F, colour='#2a9d8f', size=1) +
+        labs(x = "Age",y = "Hourly Wage (US$)") +
+        theme_minimal() 
+
+# Lowess vs. quadratic specification with age
+ggplot(data = data, aes(x=age,y=wage)) +
+        geom_point(color = '#3cc5a3', size = 1, alpha = 0.5) + 
+        geom_smooth( aes(color='#e85d04'), method="loess", formula = y ~ x,se=F, size=1) +
+        geom_smooth( aes(color='#2a9d8f'), method="lm", formula = y ~ poly(x,2) , se=F, size=1) +
+        labs(x = "Age",y = "Hourly Wage (US$s)") +
+        scale_color_manual(name="", values=c('#e85d04','#2a9d8f'), labels=c("Quadratic in age", "Lowess in age")) +
+        theme_minimal() +
+        theme(legend.position=c(0.5,0.08),
+              legend.direction = "horizontal",
+              legend.text = element_text(size = 6))
+```
+
+\newpage
+### Association between hourly wage and lowess weight/quadratic weight/cubic weight
+```{r, echo=FALSE, fig.dim=c(4,2.5), fig.align='center', message=FALSE}
+# Lowess weight with observations
+ggplot(data = data, aes(x=weight, y=wage)) +
+        geom_point( color = '#3cc5a3', size = 2, alpha = 0.5) + 
+        geom_smooth(method="loess", se=F, colour='#2a9d8f', size=1) +
+        labs(x = "Weight",y = "Hourly Wage (US$)") +
+        theme_minimal() 
+
+# Lowess vs. quadratic specification with weight
+ggplot(data = data, aes(x=weight,y=wage)) +
+        geom_point(color = '#3cc5a3', size = 1, alpha = 0.5) + 
+        geom_smooth( aes(color='#e85d04'), method="loess", formula = y ~ x,se=F, size=1) +
+        geom_smooth( aes(color='#2a9d8f'), method="lm", formula = y ~ poly(x,2) , se=F, size=1) +
+        labs(x = "Weight",y = "Hourly Wage (US$s)") +
+        scale_color_manual(name="", values=c('#e85d04','#2a9d8f'), labels=c("Quadratic in weight", "Lowess in weight")) +
+        theme_minimal() +
+        theme(legend.position=c(0.5,0.08),
+              legend.direction = "horizontal",
+              legend.text = element_text(size = 6))
+# Quadratic does not work well for the extreme values of weight
+
+# Lowess vs. cubic specification with weight
+ggplot(data = data, aes(x=weight,y=wage)) +
+        geom_point(color = '#3cc5a3', size = 1, alpha = 0.5) + 
+        geom_smooth( aes(color='#e85d04'), method="loess", formula = y ~ x,se=F, size=1) +
+        geom_smooth( aes(color='#2a9d8f'), method="lm", formula = y ~ poly(x,3) , se=F, size=1) +
+        labs(x = "Weight",y = "Hourly Wage (US$s)") +
+        scale_color_manual(name="", values=c('#e85d04','#2a9d8f'), labels=c("Cubic in weight", "Lowess in weight")) +
+        theme_minimal() +
+        theme(legend.position=c(0.5,0.08),
+              legend.direction = "horizontal",
+              legend.text = element_text(size = 6))
+```
+
+\newpage
+### Comapre models according to RMSE and BIC for the full sample
+```{r, echo=FALSE}
+# Evaluation of the models: using all the sample
+fitstat_register("k", function(x){length( x$coefficients ) - 1}, "No. Variables")
+
+# Models summary
+varname_report <- c("(Intercept)" = "Intercept",
+                    "age" = "age",
+                    "agesq" = "age squared",
+                    "female" = "female",
+                    "master" = "master",
+                    "doctorate" = "doctorate",
+                    "black" = "black",
+                    "asian" = "asian",
+                    "other" = "other race",
+                    "w" = "widowed",
+                    "sd" = "separated/divorced",
+                    "nm" = "never married",
+                    "agecu" = "age cubic",
+                    "weight" = "weight",
+                    "weightsq" = "weight squared",
+                    "weightcu" = "weight cubic",
+                    "age x female" = "age x female",
+                    "female x master" = "female x master",
+                    "female x doctorate" = "female x doctorate"
+                    )
+
+kable( etable( reg1, reg2, reg3, reg4,
+               title = 'Probability of Getting searched',
+               dict = varname_report,
+               se.below = T,
+               coefstat = 'se',
+               fitstat = c('aic','bic','rmse','r2','n','k'),
+               se.row = F,
+               depvar = F ) , 
+       col.names = c('(1)','(2)','(3)','(4)'),
+       "latex", booktabs = TRUE,
+       caption = 'Running linear regressions using all observations') %>% kable_styling(latex_options = c("hold_position","scale_down"))
+
+# BIC: Model2 is the best, RMSE: Model4 is the best
+```
+
+\newpage
+### Comapre models in terms of 5-fold Cross-validated RMSE
+```{r, echo=FALSE}
+kable(cv_mat, 
+      "latex", booktabs = TRUE, 
+      caption = '5-fold Cross Validated RMSE') %>% kable_styling(latex_options = c("hold_position","scale_down"))
+# 5-fold Cross-validated RMSE: Model3 is the best
+```
+
