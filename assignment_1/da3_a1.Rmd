@@ -290,7 +290,7 @@ ggplot( m_comp , aes( x = complexity , y = RMSE ) ) +
         geom_point(color='#e85d04',size=2) +
         geom_line(color='#2a9d8f',size=0.5)+
         labs(x='Number of Predictor Variables',y='Averaged RMSE on Test Samples',
-             title='Prediction Performance and Model Compexity') +
+             title='Prediction Performance and Model Complexity') +
         xlim(0,20) +
         theme_minimal() +
         theme(plot.title = element_text(size=8, face = "bold"),
