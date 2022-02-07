@@ -1,0 +1,82 @@
+---
+title: "Data Analysis 3 - Assignment 2"
+subtitle: "Airbnb Price Prediction - Montreal, Canada"
+author: "Xibei Chen"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+# Clear environment
+rm(list=ls())
+
+# Load packages
+library(tidyverse)
+library(data.table)
+library(caret)
+library(skimr)
+library(grid)
+library(glmnet)
+library(cowplot)
+library(modelsummary)
+library(fixest)
+library(ggthemes)
+library(gridExtra)
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(ranger)
+library(pdp)
+library(gbm)
+
+# Load raw data
+df <- read_csv("listings_montreal_20211211.csv")
+```
+
+
+# Introduction
+The purpose of this project is to help a company set price to their new apartments that are not yet on the airbnb market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price,  my approach is to analyze the data of listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html) (a website providing fairly cleaned web scrapped data on listings throughout all the major cities of the world) and then I will try to build several price prediction models based on the data with a variety of methods, such as OLS, Lasso, CART, Random Forest and GBM. Eventually with prediction performance, interpretability, external validity etc. taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments.
+
+# Data Preparation 
+```{r, include=FALSE}
+# Data Cleaning, Feature Engineering
+drops <- c("host_thumbnail_url","host_picture_url","listing_url", "picture_url",
+           "host_url","last_scraped","description", "neighborhood_overview", 
+           "host_about", "host_response_time", "name", "host_name",
+           "host_location", "bathrooms","neighbourhood_group_cleansed", "calendar_updated", 
+           "translation missing: en.hosting_amenity_49", "translation missing: en.hosting_amenity_50", 
+           "scrape_id", "host_id", "calendar_last_scraped")
+
+df<-df[ , !(names(df) %in% drops)]
+
+# Drop broken lines - in case if id is not valid
+df$junk<-grepl("[[:alpha:]]", df$id)
+df<-subset(df,df$junk==FALSE)
+df<-df[1:ncol(df)-1]
+
+df <- df %>% select(-id)
+
+# Display the class and type of each columns
+#sapply(df, class)
+#sapply(df, typeof)
+```
+
+## Data Cleaning
+I selected only the listings that meet the following criteria according to business requirements.
+
+* With valid Airbnb's unique identifier for the listing;
+* The maximum capacity is lower than or equal to 6;
+* Room type is entire apartment or flat;
+* Property type is entire place (boat and RV excluded).
+
+## Label Engineering
+Our target variable is the daily price in CA$, which is very straightforward. I
+
+
+
+
