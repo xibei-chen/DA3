@@ -4,11 +4,16 @@ subtitle: "Airbnb Price Prediction - Montreal, Canada"
 author: "Xibei Chen"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
-  pdf_document: default
+  html_document:
+    theme: "readable"
+    #toc: true
+    #toc_depth: 2
+    #toc_float: true
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, error=FALSE)
 ```
 
 ```{r, include=FALSE}
@@ -16,6 +21,7 @@ knitr::opts_chunk$set(echo = TRUE)
 rm(list=ls())
 
 # Load packages
+library(kableExtra)
 library(tidyverse)
 library(data.table)
 library(caret)
@@ -33,50 +39,722 @@ library(rpart.plot)
 library(ranger)
 library(pdp)
 library(gbm)
+library(ggpubr)
 
 # Load raw data
-df <- read_csv("listings_montreal_20211211.csv")
+data <- read_csv("/Users/xibei/Documents/2021CEU/DA3/listings_montreal_20211211_cleaned.csv") %>%
+  mutate_if(is.character, factor) 
 ```
 
 
 # Introduction
-The purpose of this project is to help a company set price to their new apartments that are not yet on the airbnb market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price,  my approach is to analyze the data of listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html) (a website providing fairly cleaned web scrapped data on listings throughout all the major cities of the world) and then I will try to build several price prediction models based on the data with a variety of methods, such as OLS, Lasso, CART, Random Forest and GBM. Eventually with prediction performance, interpretability, external validity etc. taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments.
+The purpose of this project is to help a company set price to their new apartments that are not yet on the rental market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price,  my approach is to analyze the data of airbnb listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html) (a website providing fairly cleaned web scrapped data on listings throughout all the major cities of the world) and then I build several price prediction models based on the data with methods, such as OLS, Lasso, and Random Forest. Eventually with prediction performance, interpretability, external validity etc. taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments.
 
 # Data Preparation 
-```{r, include=FALSE}
-# Data Cleaning, Feature Engineering
-drops <- c("host_thumbnail_url","host_picture_url","listing_url", "picture_url",
-           "host_url","last_scraped","description", "neighborhood_overview", 
-           "host_about", "host_response_time", "name", "host_name",
-           "host_location", "bathrooms","neighbourhood_group_cleansed", "calendar_updated", 
-           "translation missing: en.hosting_amenity_49", "translation missing: en.hosting_amenity_50", 
-           "scrape_id", "host_id", "calendar_last_scraped")
-
-df<-df[ , !(names(df) %in% drops)]
-
-# Drop broken lines - in case if id is not valid
-df$junk<-grepl("[[:alpha:]]", df$id)
-df<-subset(df,df$junk==FALSE)
-df<-df[1:ncol(df)-1]
-
-df <- df %>% select(-id)
-
-# Display the class and type of each columns
-#sapply(df, class)
-#sapply(df, typeof)
-```
 
 ## Data Cleaning
-I selected only the listings that meet the following criteria according to business requirements.
+Filter Observations:
 
 * With valid Airbnb's unique identifier for the listing;
-* The maximum capacity is lower than or equal to 6;
+* The maximum capacity is between 2 and 6;
 * Room type is entire apartment or flat;
 * Property type is entire place (boat and RV excluded).
 
-## Label Engineering
-Our target variable is the daily price in CA$, which is very straightforward. I
+Change Format:
+
+* Remove percentage signs fro, variable host_response_rate and host_acceptance_rate;
+* Remove dollar signs from variable price;
+* Format binary variables from "T/F" to "1/0" for host_is_superhost, host_has_profile_pic, host_identity_verified, instant_bookable, has_availability;
+* Clean bedrooms_text, extract only the number of bedrooms;
+* Transform host_since, first_review and last_review from date to to days difference to today
+
+Handle missing values:
+
+* Drop observations with missing value of target variable price;
+* Drop observations if only with a few missing values (2 or 3 observations);
+* Drop variables with too many missing values: license;
+* Drop variables with missing values but can be substituted by other variable: neighbourhood and host_neighbourhood can be explained by neighbourhood_cleansed which is also a better cleaned variable;
+* Impute missing value of number of beds with accommodates, as both explain the number of guests;
+* Impute missing value of number of bedrooms with the median of number of bedrooms, as it is integer value.
+* Create flag variables for variables with many missing values but I still want to keep in the data, in case they are important for predicting price, and replace missing value with 0: review_scores_rating, review_scores_accuracy, review_scores_cleanliness, review_scores_checkin, review_scores_communication, review_scores_location, review_scores_value, reviews_per_month, host_response_rate, host_acceptance_rate, first_review_to_today, last_review_to_today.
+
+## Label Engineering & EDA
+Our target variable is the daily price in CA$, which is very straightforward. 
+
+### Descriptive Statistics and Distribution of Target Variable - Daily Price (CA$)
+```{r, echo=FALSE}
+datasummary( price ~ Mean + Median + SD+ Min + P25 + P75 + Max + N, data = data ) %>% 
+             kable_styling(latex_options = c("HOLD_position","scale_down"))
+```
+Mean and Median is not too far way from each other, but Mean is larger than Median, indicating there are some extreme values at right side, which is verified by the following graph of distribution of daily price. For now I decide not to exclude them, because there is no proof that they are errors.
+
+```{r, echo=FALSE, fig.width=4, fig.height=3,fig.align='center'}
+# Check distribution of target variable - price
+ggplot( data = data, aes( x = price) )  +
+        geom_density(color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
+        theme_minimal() +
+        labs( x = NULL, y = NULL,
+              title = 'Distribution of Daily Price (CA$)') +
+        theme( panel.grid.minor.x = element_blank(), 
+               plot.title = element_text( size = 10, face = "bold", hjust = 0.5 ) ) +
+        theme( legend.position = "none" ) 
+```
 
 
+## Feature Engineering
+I made create many dummy variables for amenities and host_verifications. And I created following variable groups for further analysis about variable importance.
+
+* amenities which includes amenities_general, home_appliance_brands, beauty_care_brands, baby_children_friendly, digital_entertainment, outdoor_facilities;
+* host_verifications;
+* avalabilities;
+* minmax_nights;
+* location.
+
+And I put the following symbols to indicate what type the varible is.
+
+* "d_": dummy variables, includes also "d_missing" which means flag variable for missing value;
+* "f_": factor variables;
+* "n_": numeric variables, includes also "n_p" for percentage variables and "n_dt" for days difference to today.
+
+I have also added following features to capture potential non-linear patterns.
+
+* squared_number_of_reviews;
+* cubic_number_of_reviews;
+* ln_host_since_to_today.
+
+Interaction terms below have also been created for modelling with OLS and Lasso, with interaction graph shown below. Here I did not create interaction terms with amenities, because there are so many, it would be super hard to compute because of the lack of computing power.
+
+* f_property_type*d_pets_allowed;
+* f_property_type*d_pool;
+* f_neighbourhood_cleansed*d_beachfront;
+* f_neighbourhood_cleansed*d_lake_access.     
+
+```{r, include=FALSE}
+# Souce a function (Credits to Agoston) -> to plot interaction terms
+source("/Users/xibei/Documents/2021CEU/DA3/price_diff_by_variables2.R")
+
+# Look up property type with pets allowed and pool
+p1 <- price_diff_by_variables2(data, "f_property_type", "d_pets_allowed", "Property type", "Pets Allowed") + theme(axis.text.x = element_text(angle = 45, hjust=1))
+p2 <- price_diff_by_variables2(data, "f_property_type", "d_pool", "Property type", "Pool") + theme(axis.text.x = element_text(angle = 45, hjust=1))
+# Patterns change
+
+# Look up neighbourhood with beachfront and lake access
+p3 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_beachfront", "Neighbourhood", "Beachfront")+ theme(axis.text.x = element_text(angle = 45, hjust=1))
+p4 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_lake_access", "Neighbourhood", "Lake Access")+ theme(axis.text.x = element_text(angle = 45, hjust=1))
+# Patterns change
+```
+
+```{r, echo=FALSE, fig.align='center', fig.dim=c(8,6)}
+ggarrange(p1, p2, ncol = 2, nrow = 2)
+```
+
+```{r, echo=FALSE, fig.align='center', fig.dim=c(10,8)}
+ggarrange(p3, p4, ncol = 2, nrow = 2)
+```
+
+# Modelling
+
+## Mange different samples:
+Create a holdout set with 20% of observations by random sampling, and the left 80% would be used as work set.
+```{r, include=FALSE}
+# Manage samples:
+# Create a holdout set (20% of observations)
+smp_size <- floor(0.2 * nrow(data))
+
+# Set the random number generator to make results reproducible
+set.seed(20220210)
+
+# Create ids:
+holdout_ids <- sample( seq_len( nrow( data ) ) , size = smp_size )
+data$holdout <- 0
+data$holdout[holdout_ids] <- 1
+
+# Hold-out set Set
+data_holdout <- data %>% filter(holdout == 1)
+
+# Working data set
+data_work <- data %>% filter(holdout == 0)
+```
+
+## Create predictor levels: 
+```{r, include=FALSE}
+source("/Users/xibei/Documents/2021CEU/DA3/var_groups.R")
+```
+
+* basic_lev: f_neighbourhood_cleansed, f_property_type, n_accommodates, n_bedrooms, n_beds, n_dt_host_since_to_today;
+* reviews_lev: n_number_of_reviews, n_review_scores_rating, n_review_scores_accuracy, n_review_scores_cleanliness, n_review_scores_checkin, n_review_scores_communication, n_review_scores_location, n_review_scores_value;
+* host_lev: d_host_is_superhost, n_host_listings_count, n_host_total_listings_count, d_host_has_profile_pic, d_host_identity_verified, n_p_host_response_rate, n_p_host_acceptance_rate, host_verifications;
+* poly_log_lev: n_squared_number_of_reviews, n_cubic_number_of_reviews, n_ln_host_since_to_today;
+* amenities_general;
+* X1: f_property_type\*d_pets_allowed, f_property_type\*d_pool
+* X2: f_neighbourhood_cleansed\*d_beachfront, f_neighbourhood_cleansed\*d_lake_access
+
+```{r, include=FALSE}
+# Basic levels
+basic_lev  <- c("f_neighbourhood_cleansed", "f_property_type", "n_accommodates","n_bedrooms","n_beds", "n_dt_host_since_to_today")
+
+# Basic Add levels
+basic_add_lev <- c("n_minimum_nights", "n_maximum_nights", "d_has_availability", "n_availability_30", "d_instant_bookable")
+
+# Reviews levels
+reviews_lev <- c("n_number_of_reviews","n_review_scores_rating","n_review_scores_cleanliness", "n_review_scores_value")
+
+# Polynomial and log-level 
+poly_log_lev <- c("n_squared_number_of_reviews", "n_cubic_number_of_reviews", "n_ln_host_since_to_today")
+
+# Amenities general levels - I grouped already previously
+# amenities_general
+
+# Interaction terms
+X1  <- c("f_property_type*d_pets_allowed",  "f_property_type*d_pool")
+X2  <- c("f_neighbourhood_cleansed*d_beachfront", "f_neighbourhood_cleansed*d_lake_access")
+
+```
+
+
+## (1) OLS 
+I build following 8 models with increasing model complexity.
+
+* Model 1: n_accommodates;
+* Model 2: basic_lev;
+* Model 3: basic_lev, reviews_lev;
+* Model 4: basic_lev, reviews_lev, host_lev, poly_log_lev, amenities_general, X1, X2.
+```{r, include=FALSE}
+# Create models 1-8 from simple to complex
+modellev1 <- " ~ n_accommodates"
+modellev2 <- paste0(" ~ ",paste(basic_lev,collapse = " + "))
+modellev3 <- paste0(" ~ ",paste(c(basic_lev, basic_add_lev),collapse = " + "))
+modellev4 <- paste0(" ~ ",paste(c(basic_lev, basic_add_lev, reviews_lev, poly_log_lev),collapse = " + "))
+modellev5 <- paste0(" ~ ",paste(c(basic_lev, basic_add_lev, reviews_lev, poly_log_lev, X1),collapse = " + "))
+modellev6 <- paste0(" ~ ",paste(c(basic_lev, basic_add_lev, reviews_lev, poly_log_lev, X1,X2),collapse = " + "))
+modellev7 <- paste0(" ~ ",paste(c(basic_lev, basic_add_lev, reviews_lev, poly_log_lev, X1,X2, amenities_general),collapse = " + "))
+
+
+# Utilize the Working data set:
+# Estimate measures on the whole working sample (R2,BIC,RMSE)
+# Do K-fold cross validation to get proper Test RMSE
+
+# Do everything within a for-loop
+# K = 5
+k_folds <- 5
+# Define seed value
+seed_val <- 20220210
+
+# Do the iteration
+for ( i in 1:7 ){
+        print(paste0( "Estimating model: " ,i ))
+        # Get the model name
+        model_name <-  paste0("modellev",i)
+        model_pretty_name <- paste0("M",i,"")
+        # Specify the formula
+        yvar <- "price"
+        xvars <- eval(parse(text = model_name))
+        formula <- formula(paste0(yvar,xvars))
+        
+        # Estimate model on the whole sample
+        model_work_data <- feols( formula , data = data_work , vcov='hetero' )
+        #  and get the summary statistics
+        fs  <- fitstat(model_work_data,c('rmse','r2','bic'))
+        BIC <- fs$bic
+        r2  <- fs$r2
+        rmse_train <- fs$rmse
+        ncoeff <- length( model_work_data$coefficients )
+        
+        # Do the k-fold estimation
+        set.seed(seed_val)
+        cv_i <- train( formula, data_work, method = "lm", 
+                       trControl = trainControl(method = "cv", number = k_folds))
+        rmse_test <- mean( cv_i$resample$RMSE )
+        
+        # Save the results
+        model_add <- tibble(Model=model_pretty_name, Coefficients=ncoeff,
+                            R_squared=r2, BIC = BIC, 
+                            Training_RMSE = rmse_train, Test_RMSE = rmse_test )
+        if ( i == 1 ){
+                model_results <- model_add
+        } else{
+                model_results <- rbind( model_results , model_add )
+        }
+}
+```
+
+```{r, echo=FALSE}
+# Check summary table
+kable(model_results, 
+      "latex", booktabs = TRUE, 
+      caption = 'Model 1-7 Performance Summary') %>% kable_styling(latex_options = c("hold_position","scale_down"), font_size = 4)
+```
+From the above summary table, we can see that in terms of BIC, M3 with 57 coefficients is the best. However, M7 with 130 coefficients is the best according to R-squared, Training RMSE and Test RMSE, compared to M6, M7 commits roughly 1.4$ Test RMSE, which is quite a improvement.
+
+```{r, echo=FALSE, fig.align='center' }
+# RMSE training vs test graph
+colors = c("Training RMSE"="#2a9d8f","Test RMSE" = "#e85d04")
+p2<-ggplot( data = model_results, aes( x = factor( Coefficients ) , group = 1 ) )+
+        geom_line(aes( y = Training_RMSE , color = 'Training RMSE'), size = 1 ) +
+        geom_line(aes( y = Test_RMSE , color = 'Test RMSE') , size = 1 )+
+        labs(y='RMSE',x='Number of coefficients',color = "")+
+        scale_color_manual(values = colors)+
+        theme_bw()+
+        theme(legend.position="top")
+```
+From the above graph, we can see that with the increase of model complexity and number of coefficients, both Training and Test RMSE are dropping, which implies that our model might not yet overfit the training data.
+
+## (2) Lasso
+```{r}
+# Set lasso tuning parameters:
+# a) basic setup
+train_control <- trainControl( method = "cv", number = k_folds)
+# b) tell the actual lambda (penalty parameter) to use for lasso
+tune_grid     <- expand.grid("alpha" = c(1), "lambda" = seq(0.05, 1, by = 0.05))
+# c) create a formula
+# Take OLS model 7
+formula <- formula(paste0("price", paste(modellev7, collapse = " + ")))
+
+# Run LASSO
+set.seed(seed_val)
+lasso_model <- caret::train(formula,
+                            data = data_work,
+                            method = "glmnet",
+                            preProcess = c("center", "scale"),
+                            trControl = train_control,
+                            tuneGrid = tune_grid,
+                            na.action=na.exclude)
+
+# Check the output
+lasso_model
+# Check th optimal lambda parameter 0.2
+lasso_model$bestTune$lambda
+# Check the RMSE curve
+plot(lasso_model)
+
+# One can get the coefficients as well
+lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
+        as.matrix() %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "variable") %>%
+        rename(coefficient = `s1`)  # the column has a name "1", to be renamed
+
+print(lasso_coeffs)
+
+# Check the number of variables which actually has coefficients other than 0
+lasso_coeffs_nz<-lasso_coeffs %>%
+        filter(coefficient!=0)
+print(nrow(lasso_coeffs_nz))
+# Lasso picks 117 coefficients
+
+# Get the RMSE of the Lasso model 
+# Compare this to the test RMSE
+lasso_fitstats <- lasso_model$results %>%
+        filter(lambda == lasso_model$bestTune$lambda) 
+lasso_fitstats
+# Create an auxilary tibble
+lasso_add <- tibble(Model='LASSO', Coefficients=nrow(lasso_coeffs_nz),
+                    R_squared=lasso_fitstats$Rsquared, BIC = NA, 
+                    Training_RMSE = NA, Test_RMSE = lasso_fitstats$RMSE )
+# Add it to final results
+model_results <- rbind( model_results , lasso_add )
+model_results
+# Lasso with 117 coefficients got slight better Test_RMSE than M7 with 130 coefficients by around 0.2$
+```
+```{r}
+# Diagnostics
+# Evaluate performance on the hold-out sample
+# Re-run Model 7 on the work data
+m7 <- feols( formula(paste0("price",modellev7)) , data = data_work, vcov = 'hetero' )
+
+# Make prediction for the hold-out sample with M7 and Lasso
+m7_p <- predict( m7 , newdata = data_holdout )
+mL_p <- predict( lasso_model , newdata = data_holdout )
+
+# Calculate the RMSE on hold-out sample
+m7_rmse <- RMSE(m7_p,data_holdout$price)
+mL_rmse <- RMSE(mL_p,data_holdout$price)
+
+# Create a table
+sum <- rbind(m7_rmse,mL_rmse)
+rownames(sum) <- c('Model 7','LASSO')
+colnames(sum) <- c('RMSE on hold-out sample')
+sum
+# Lasso also won Model 7 on hold-out sample by around 0.2$
+```
+```{r} 
+# Predicted vs Actual prices
+data_holdout$predLp <- mL_p
+
+ggplot( data_holdout , aes( y = price , x = predLp ) ) +
+        geom_point( size = 1 , color = '#2a9d8f' , alpha=0.4) +
+        geom_abline( intercept = 0, slope = 1, size = 1, color = '#e85d04' , alpha=0.8, linetype = 'dashed') +
+        xlim(-1,max(data_holdout$price))+
+        ylim(-1,max(data_holdout$price))+
+        labs(x='Predicted Daily Price (CA$)',y='Acutal Daily Price (CA$)')+
+        theme_minimal()
+# Lasso performs prediction bad at extreme values
+```
+
+## (3) Random Forest
+```{r}
+predictors_all <- colnames(data)
+elements_2_remove <- c("price", "holdout")
+predictors_all <- predictors_all[!(predictors_all %in% elements_2_remove)]
+
+# Do 5-fold CV
+train_control <- trainControl(method = "cv",
+                              number = 5,
+                              verboseIter = FALSE)
+
+# Set tuning, 177 predictors, so set 13 variables per split, and arbitrarily set 50 min size per terminal node.
+tune_grid <- expand.grid(
+        .mtry = c(13),
+        .splitrule = "variance",
+        .min.node.size = c(50)
+)
+
+set.seed(seed_val)
+
+rf_model <- train(
+                formula(paste0("price ~", paste0(predictors_all, collapse = " + "))),
+                data = data_work,
+                method = "ranger",
+                trControl = train_control,
+                tuneGrid = tune_grid,
+                importance = "impurity"
+        )
+
+#### Variable importance plot
+rf_model_var_imp <- ranger::importance(rf_model$finalModel)/1000 # scaled it down by 1000
+rf_model_var_imp_df <-
+        data.frame(varname = names(rf_model_var_imp),imp = rf_model_var_imp) %>%
+        mutate(varname = gsub("f_neighbourhood_cleansed", "District:", varname) ) %>%
+        mutate(varname = gsub("f_property_type", "Property type:", varname) ) %>%
+        arrange(desc(imp)) %>%
+        mutate(imp_percentage = imp/sum(imp))
+
+# Full variable importance plot
+plot(varImp(rf_model)) # too many variables, not clear
+
+# Zoom in a bit
+cutoff = 200
+ggplot(rf_model_var_imp_df[rf_model_var_imp_df$imp>cutoff,],
+       aes(x=reorder(varname, imp), y=imp_percentage)) +
+        geom_point(color='#e85d04', size=1.5) +
+        geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color='#2a9d8f', alpha=0.6, size=1) +
+        ylab("Importance (Percent)") +
+        xlab("Variable Name") +
+        coord_flip() +
+        scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(size=6), axis.text.y = element_text(size=6),
+              axis.title.x = element_text(size=6), axis.title.y = element_text(size=6))
+# We can see there are a lot variable belonging to the same group, such as availability or location, minmax nights, etc.
+
+# Top 10 important variable
+ggplot(rf_model_var_imp_df[1:10,], aes(x=reorder(varname, imp), y=imp_percentage)) +
+        geom_point(color='#e85d04', size=1) +
+        geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color='#2a9d8f', alpha = 0.6, size=0.75) +
+        ylab("Importance (Percent)") +
+        xlab("Variable Name") +
+        coord_flip() +
+        scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+        theme_minimal()
+
+# Grouped variable importance
+availabilities_varnames <- grep("n_availability",colnames(data), value = TRUE)
+minmax_nights_varnames <- grep("n_m",colnames(data), value = TRUE)
+location_varnames <- c("n_latitude","n_longtitude")
+groups <- list(minmax_nights = minmax_nights_varnames,
+               availability_days = availabilities_varnames,
+               amenities_general = amenities_general,
+               location = location_varnames,
+               baby_children_friendly = baby_children_friendly,
+               beauty_care_brands = beauty_care_brands,
+               digital_entertainment = digital_entertainment,
+               home_appliance_brands = home_appliance_brands,
+               host_verifications = host_verifications,
+               outdoor_facilities = outdoor_facilities,
+               n_bathrooms = "n_bathrooms",
+               n_accommodates = "n_accommodates",
+               n_bedrooms = "n_bedrooms", 
+               f_property_type = "f_property_type",
+               f_neighbourhood_cleansed = "f_neighbourhood_cleansed"
+               )
+
+# Need a function to calculate grouped varimp
+group.importance <- function(rf.obj, groups) {
+        var.imp <- as.matrix(sapply(groups, function(g) {
+                sum(ranger::importance(rf.obj)[g], na.rm = TRUE)
+        }))
+        colnames(var.imp) <- "MeanDecreaseGini"
+        return(var.imp)
+}
+
+rf_model_var_imp_grouped <- group.importance(rf_model$finalModel, groups)
+rf_model_var_imp_grouped_df <- data.frame(varname = rownames(rf_model_var_imp_grouped),
+                                            imp = rf_model_var_imp_grouped[,1])  %>%
+        mutate(imp_percentage = imp/sum(imp))
+
+ggplot(rf_model_var_imp_grouped_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
+        geom_point(color='#e85d04', size=1) +
+        geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color='#2a9d8f', alpha=0.6, size=0.7) +
+        ylab("Importance (Percent)") +   xlab("Variable Name") +
+        coord_flip() +
+        # expand=c(0,0),
+        scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+        theme_minimal()
+
+# Partial Dependence Plots 
+# Number of accommodates
+pdp_n_acc <- pdp::partial(rf_model, pred.var = "n_accommodates", 
+                          pred.grid = distinct_(data_holdout, "n_accommodates"), 
+                          train = data_work)
+
+pdp_n_acc %>%
+        autoplot( ) +
+        geom_line(color='#2a9d8f', size=1) +
+        geom_point(color='#e85d04', size=2) +
+        ylab("Predicted price") +
+        xlab("Accommodates (persons)") +
+        scale_x_continuous(limit=c(2,6), breaks=seq(2,6,1))+
+        theme_minimal()
+
+# Property type
+pdp_n_propertytype <- pdp::partial(rf_model, pred.var = "f_property_type", 
+                               pred.grid = distinct_(data_holdout, "f_property_type"), 
+                               train = data_work)
+pdp_n_propertytype %>%
+        autoplot( ) +
+        geom_point(color='#e85d04', size=4) +
+        ylab("Predicted price") +
+        xlab("Property type") +
+        scale_y_continuous(limits=c(110,125), breaks=seq(110,125, by=5)) +
+        theme_minimal()+
+        theme(axis.text.x=element_text(angle=45,hjust=1)) 
+
+# Subsample performance
+data_holdout_w_prediction <- data_holdout %>%
+        mutate(predicted_price = predict(rf_model, newdata = data_holdout))
+
+# Create nice summary table of heterogeneity
+a <- data_holdout_w_prediction %>%
+        mutate(is_low_size = ifelse(n_accommodates <= 3, "small apt", "medium apt")) %>%
+        group_by(is_low_size) %>%
+        dplyr::summarise(
+                rmse = RMSE(predicted_price, price),
+                mean_price = mean(price),
+                rmse_norm = RMSE(predicted_price, price) / mean(price)
+        )
+
+b <- data_holdout_w_prediction %>%
+        filter(f_neighbourhood_cleansed %in% c("Ville-Marie", "Le Plateau-Mont-Royal",
+                                               "Le Sud-Ouest", "Côte-des-Neiges-Notre-Dame-de-Grâce",
+                                               "Westmount")) %>%
+        group_by(f_neighbourhood_cleansed) %>%
+        dplyr::summarise(
+                rmse = RMSE(predicted_price, price),
+                mean_price = mean(price),
+                rmse_norm = rmse / mean_price
+        )
+
+c <- data_holdout_w_prediction %>%
+        filter(f_property_type %in% c("Entire condominium (condo)", "Entire serviced apartment","Entire townhouse")) %>%
+        group_by(f_property_type) %>%
+        dplyr::summarise(
+                rmse = RMSE(predicted_price, price),
+                mean_price = mean(price),
+                rmse_norm = rmse / mean_price
+        )
+
+d <- data_holdout_w_prediction %>%
+        dplyr::summarise(
+                rmse = RMSE(predicted_price, price),
+                mean_price = mean(price),
+                rmse_norm = RMSE(predicted_price, price) / mean(price)
+        )
+
+# Save output
+colnames(a) <- c("", "RMSE", "Mean price", "RMSE/price")
+colnames(b) <- c("", "RMSE", "Mean price", "RMSE/price")
+colnames(c) <- c("", "RMSE", "Mean price", "RMSE/price")
+d<- cbind("All", d)
+colnames(d) <- c("", "RMSE", "Mean price", "RMSE/price")
+
+line1 <- c("Type", "", "", "")
+line2 <- c("Apartment size", "", "", "")
+line3 <- c("District", "", "", "")
+result_3 <- rbind(line2, a, line1, c, line3, b, d) %>%
+        transform(RMSE = as.numeric(RMSE), `Mean price` = as.numeric(`Mean price`),
+                  `RMSE/price` = as.numeric(`RMSE/price`))
+
+result_3
+```
+
+# Horserace
+```{r}
+M7predictors <- c(basic_lev, basic_add_lev, reviews_lev, poly_log_lev, amenities_general, X1, X2)
+
+set.seed(20220210)
+ols_model <- train(
+                formula(paste0("price ~", paste0(M7predictors, collapse = " + "))),
+                data = data_work,
+                method = "lm",
+                trControl = train_control
+        )
+# ols_model_coeffs <-  ols_model$finalModel$coefficients
+# ols_model_coeffs_df <- data.frame(
+#         "variable" = names(ols_model_coeffs),
+#         "ols_coefficient" = ols_model_coeffs
+# ) %>%
+#         mutate(variable = gsub("`","",variable))
+
+# set.seed(20220210)
+# lasso_model <- train(
+#                 formula(paste0("price ~", paste0(M7predictors, collapse = " + "))),
+#                 data = data_work,
+#                 method = "glmnet",
+#                 preProcess = c("center", "scale"),
+#                 tuneGrid =  expand.grid("alpha" = 1, "lambda" = seq(0.01, 0.25, by = 0.01)),
+#                 trControl = train_control
+#         )
+# 
+# lasso_coeffs <- coef(
+#         lasso_model$finalModel,
+#         lasso_model$bestTune$lambda) %>%
+#         as.matrix() %>%
+#         as.data.frame() %>%
+#         rownames_to_column(var = "variable") %>%
+#         rename(lasso_coefficient = `s1`)
+# 
+# lasso_coeffs_non_null <- lasso_coeffs[!lasso_coeffs$lasso_coefficient == 0,]
+# 
+# regression_coeffs <- merge(ols_model_coeffs_df, lasso_coeffs_non_null, by = "variable", all=TRUE)
+
+
+# Compare these models
+final_models <-
+        list("OLS (model7 predictors)" = ols_model,
+             "LASSO (model7 predictors)" = lasso_model,
+             "Random forest  (all predictors)" = rf_model)
+
+results <- resamples(final_models) %>% summary()
+results
+
+# Model selection is carried out on this CV RMSE
+result_cv <- imap(final_models, ~{
+        mean(results$values[[paste0(.y,"~RMSE")]])
+}) %>% unlist() %>% as.data.frame() %>%
+        rename("CV RMSE" = ".")
+
+result_cv
+# Random forest is the best
+
+# Evaluate preferred model on the holdout set
+result_holdout <- map(final_models, ~{
+        RMSE(predict(.x, newdata = data_holdout), data_holdout[["price"]])
+}) %>% unlist() %>% as.data.frame() %>%
+        rename("Holdout RMSE" = ".")
+
+result_holdout
+# Random forest is the best
+```
+
+# Robustness Check 
+
+## Exclude Apartments with Extreme Values of Price
+```{r}
+datasummary(price ~ Mean + Median + SD + Min+ P25 + P75 + Max + N, data = data )
+
+# Define extreme values 75th percentile + 1.5 * IQR = 226
+extreme_price <- quantile(data$price, 0.75) + 1.5*(quantile(data$price, 0.75)-quantile(data$price, 0.25))
+
+# Since we are a company operating small and mid-size apartments hosting 2-6 guests, we are not supposed to be extreme values normally.
+# So I decided to exclude the flat whose price is above 75th percentile + 1.5*IQR
+data_ne <- data %>% filter(price <= extreme_price)
+
+
+# Manage samples:
+# Create a holdout set (20% of observations)
+smp_size <- floor(0.2 * nrow(data_ne))
+
+# Set the random number generator to make results reproducible
+set.seed(20220210)
+
+# Create ids:
+holdout_ids <- sample( seq_len( nrow( data_ne) ) , size = smp_size )
+data_ne$holdout <- 0
+data_ne$holdout[holdout_ids] <- 1
+
+# Hold-out set Set
+data_ne_holdout <- data_ne %>% filter(holdout == 1)
+
+# Working data set
+data_ne_work <- data_ne %>% filter(holdout == 0)
+
+# OLS
+set.seed(20220210)
+ne_ols_model <- train(
+                formula(paste0("price ~", paste0(M7predictors, collapse = " + "))),
+                data = data_ne_work,
+                method = "lm",
+                trControl = train_control
+        )
+
+# Lasso
+set.seed(20220210)
+ne_lasso_model <- train(
+                formula(paste0("price ~", paste0(M7predictors, collapse = " + "))),
+                data = data_ne_work,
+                method = "glmnet",
+                preProcess = c("center", "scale"),
+                tuneGrid =  expand.grid("alpha" = 1, "lambda" = seq(0.01, 0.25, by = 0.01)),
+                trControl = train_control
+        )
+
+
+# Random forest
+set.seed(20220210)
+
+ne_rf_model <- train(
+                formula(paste0("price ~", paste0(predictors_all, collapse = " + "))),
+                data = data_ne_work,
+                method = "ranger",
+                trControl = train_control,
+                tuneGrid = tune_grid,
+                importance = "impurity"
+        )
+
+
+
+# Compare these models
+ne_final_models <-
+        list("OLS (model7 predictors)" = ne_ols_model,
+             "LASSO (model7 predictors)" = ne_lasso_model,
+             "Random forest  (all predictors)" = ne_rf_model)
+
+ne_results <- resamples(ne_final_models) %>% summary()
+ne_results
+
+# Model selection is carried out on this CV RMSE
+ne_result_cv <- imap(ne_final_models, ~{
+        mean(ne_results$values[[paste0(.y,"~RMSE")]])
+}) %>% unlist() %>% as.data.frame() %>%
+        rename("CV RMSE" = ".")
+
+ne_result_cv
+
+# Evaluate preferred model on the holdout set
+ne_result_holdout <- map(ne_final_models, ~{
+        RMSE(predict(.x, newdata = data_ne_holdout), data_ne_holdout[["price"]])
+}) %>% unlist() %>% as.data.frame() %>%
+        rename("Holdout RMSE" = ".")
+
+ne_result_holdout
+# Random forest is still the best for both cv RMSE and holdout RMSE, and only half of the RMSE than before when we did not exclude extreme values
+
+# So if the properties the company is operating has no unusual features, like neighbour of celebrities, and they are just normal properties, I would use this GBM on the data without apartments with extreme values of price for prediction.
+```
+## External Validity
+```{r}
+data_jan <- read_csv("/Users/xibei/Documents/2021CEU/DA3/listings_montreal_20210114_cleaned_extreme_excluded.csv") %>%
+  mutate_if(is.character, factor) 
+```
 
 
