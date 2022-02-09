@@ -2,10 +2,11 @@
 title: "Data Analysis 3 - Assignment 2"
 author: "Xibei Chen"
 date: "`r format(Sys.time(), '%d %B %Y')`"
+subtitle: "Airbnb Price Prediction - Montreal, Canada"
 output:
-  html_document:
-    df_print: paged
-subtitle: Airbnb Price Prediction - Montreal, Canada
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: tango
 ---
 
 ```{r setup, include=FALSE}
@@ -44,58 +45,21 @@ data <- read_csv("/Users/xibei/Documents/2021CEU/DA3/listings_montreal_20211211_
 
 
 # Introduction
-The purpose of this project is to help a company set price to their new apartments that are not yet on the rental market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price,  my approach is to analyze the data of airbnb listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html) (a website providing fairly cleaned web scrapped data on listings throughout all the major cities of the world) and then I build several price prediction models based on the data with methods, such as OLS, Lasso, and Random Forest. Eventually with prediction performance, interpretability, external validity etc. taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments.
+The purpose of this project is to help a company set price to their new apartments that are not yet on the rental market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price, my approach is to analyze the data of airbnb listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html). Then I build several price prediction models with methods, such as OLS, Lasso, and Random Forest. Eventually with prediction performance, interpretability, and external validity taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments. (Please note that this is a summary report, please find more technical details on the technical report)
 
 # Data Preparation 
-Data preparation includes mainly three parts: Data Cleaning, Label Engineearing, and Feature Engineearing. (Please find more details on [Cleaner R script](https://github.com/xibei-chen/DA3/blob/main/assignment_2/montreal_20211211_cleaner.R))
-
-### Data Cleaning 
-Filter Observations:
-
-* With valid Airbnb's unique identifier for the listing;
-* The maximum capacity is between 2 and 6;
-* Room type is entire apartment or flat;
-* Property type is entire place (boat and RV excluded).
-
-Change Format & Handle missing values 
+Data preparation includes mainly three parts: Data Cleaning, Label Engineering, and Feature Engineering. For Data Cleaning, I filtered observations meeting the following criteria: with valid Airbnb's unique identifier for the listing, maximum capacity is between 2 and 6, room type is entire apartment or flat, property type is entire place (boat and RV excluded). I have also change format of some variables and handled missing values with different methods such as imputing, adding flag, etc.
 
 
 ### Label Engineering & EDA
-Our target variable is the daily price in CA$, which is very straightforward. 
 
-##### Descriptive Statistics of Daily Price
 ```{r, echo=FALSE}
-datasummary( price ~ Mean + Median + SD+ Min + P25 + P75 + Max + N, data = data ) %>% 
-             kable_styling(latex_options = c("HOLD_position","scale_down"))
+datasummary( price ~ Mean + Median + SD+ Min + P25 + P75 + Max + N, data = data, caption ="Descriptive Statistics of Daily Price (CA$)") %>% kable_styling(latex_options = c("HOLD_position","scale_down"))
 ```
-Mean and Median is not too far way from each other, but Mean is larger than Median, indicating there are some extreme values at right side, which is verified by the following graph of distribution of daily price. For now I decide not to exclude them, because there is no proof that they are errors.
-
-```{r, echo=FALSE, fig.width=6, fig.height=4,fig.align='center'}
-# Check distribution of target variable - price
-ggplot( data = data, aes( x = price) )  +
-        geom_density(color='#2a9d8f',fill='#3cc5a3', alpha=0.5) +
-        theme_minimal() +
-        labs( x = NULL, y = NULL,
-              title = 'Distribution of Daily Price (CA$)') +
-        theme( panel.grid.minor.x = element_blank(), 
-               plot.title = element_text( size = 10, face = "bold", hjust = 0.5 ) ) +
-        theme( legend.position = "none" ) 
-```
-
+Our target variable is the daily price in CA Dollars, which is very straightforward. The Mean and Median is not too far way from each other, but Mean is larger than Median, indicating there are some extreme values at right side. For now I decide not to exclude them, because there is no proof that they are errors.
 
 ### Feature Engineering
-I create many dummy variables for amenities and host_verifications. And I created following variable groups for further analysis about variable importance. (Please find more details on [Define Variable Groups](https://github.com/xibei-chen/DA3/blob/main/assignment_2/define_var_groups.R)) And I put the symbols such as "d_", "f_" "n_" and to indicate what type the variable is, dummy, factor or numeric. I have also added following features to capture potential non-linear patterns.
-
-* squared_number_of_reviews;
-* cubic_number_of_reviews;
-* ln_host_since_to_today.
-
-Interaction terms below have also been created for modelling with OLS and Lasso, as I see that for different property types, the patterns between price and if pets allowed, and if there is pool change. In addition for different neighbourhoods, the patterns between price and if there is free parking and if there is lake access also change. (Here I did not create interaction terms with amenities, because there are so many, it would be super hard to compute because of the lack of computing power)
-
-* f_property_type*d_pets_allowed;
-* f_property_type*d_pool;
-* f_neighbourhood_cleansed*d_free_parking;
-* f_neighbourhood_cleansed*d_lake_access.     
+I create many dummy variables for amenities and host_verifications. And I created following variable groups for further analysis about variable importance. And I put the symbols such as "d_", "f_" "n_" and to indicate what type the variable is, dummy, factor or numeric. I have also added following features to capture potential non-linear patterns.: squared_number_of_reviews, cubic_number_of_reviews, ln_host_since_to_today. Besides, Interaction terms have also been created for modelling with OLS and Lasso, as I see that for different property types, the patterns between price and if pets allowed, and if there is pool change. In addition for different neighbourhoods, the patterns between price and if there is free parking and if there is lake access also change. (Here I did not create interaction terms with amenities, because there are so many, it would be super hard to compute because of the lack of computing power)
 
 ```{r, include=FALSE}
 # Source a function (Credits to Agoston) -> to plot interaction terms
@@ -117,8 +81,7 @@ p4 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_lake_access"
 
 ### Preparation
 
-* Mange different samples: Create a holdout set with 20% of observations by random sampling, and the left 80% would be used as work set;
-* Create multiple predictor levels: basic_lev, basic_add_lev, reviews_lev, poly_log_lev, amenities_general, and two interactions levels X1 and X2.
+Mange different samples: Create a holdout set with 20% of observations by random sampling, and the left 80% would be used as work set; Create multiple predictor levels: basic_lev, basic_add_lev, reviews_lev, poly_log_lev, amenities_general, and two interactions levels X1 and X2.
 
 ```{r, include=FALSE}
 # Manage samples:
@@ -236,24 +199,7 @@ for ( i in 1:7 ){
         }
 }
 ```
-```{r}
-kable(model_results, booktabs = TRUE, caption = 'OLS Model 1-7 Performance Summary (5-fold CV)') %>% kable_styling(latex_options = c("hold_position","scale_down"))
-```
 
-From the above summary table, we can see that in terms of BIC, M3 with 57 coefficients is the best. However, M7 with 152 coefficients is the best according to R-squared, Training RMSE and Test RMSE, compared to M6, M7 commits roughly 1.2$ Test RMSE, which is quite a improvement.
-
-```{r, echo=FALSE, fig.align='center' }
-# RMSE training vs test graph
-colors = c("Training RMSE"="#2a9d8f","Test RMSE" = "#e85d04")
-ggplot( data = model_results, aes( x = factor( Coefficients ) , group = 1 ) )+
-        geom_line(aes( y = Training_RMSE , color = 'Training RMSE'), size = 1 ) +
-        geom_line(aes( y = Test_RMSE , color = 'Test RMSE') , size = 1 )+
-        labs(y='RMSE',x='Number of coefficients',color = "")+
-        scale_color_manual(values = colors)+
-        theme_bw()+
-        theme(legend.position="top")
-```
-From the above graph, we can see that with the increase of OLS model complexity and number of coefficients, both Training and Test RMSE are dropping, which implies that our model might not yet overfit the training data.
 
 ### (2) Lasso
 ```{r, include=FALSE}
@@ -310,11 +256,10 @@ lasso_add <- tibble(Model='LASSO', Coefficients=nrow(lasso_coeffs_nz),
 model_results_lasso <- rbind( model_results , lasso_add )
 ```
 
-```{r}
+```{r, echo=FALSE}
 kable(model_results_lasso, booktabs = TRUE, caption = 'OLS and Lasso Performance Summary (5-fold CV)') %>% kable_styling(latex_options = c("hold_position","scale_down"))
 ```
 
-For Lasso modelling, we still use the OLS M7 predictors. The elasticnet mixing parameter can be set with 0 ≤ α ≤ 1. We can let machine run different α to find the optimal one. However, to reduce the computing time, here I set alpha=1, which is the lasso penalty. I let machine run lamda from 0.05 to 1 by 0.05, to get the optimal. It turns out the optimal lambda parameter lies at `r lasso_model$bestTune$lambda`. Besides, we can get the number of coefficients that Lasso picked, which is `r nrow(lasso_coeffs_nz)`. From the summary table above, we can tell that Lasso gets us slight better Test_RMSE than OLS M7 by around 0.2$.
 
 ```{r, include=FALSE}
 # Diagnostics
@@ -336,13 +281,10 @@ rownames(sum) <- c('OLS M7','LASSO')
 colnames(sum) <- c('RMSE on hold-out sample')
 # Lasso also won Model 7 on hold-out sample by around 0.2$
 ```
-```{r, echo=FALSE}
-kable(sum, booktabs = TRUE) %>% kable_styling(full_width = F, latex_options = c("hold_position","scale_down"))
-```
 
-I also evaluated the prediction performance of both OLS M7 and Lasso on our hold-out sample. As we can see from above table, Lasso also wins OLS M7, by roughly 0.4$.
+For Lasso modelling, we still use the OLS M7 predictors. From the above summary table, we can see that M7 with 152 coefficients is the best among OLS Models 1-7. However, Lasso with `r nrow(lasso_coeffs_nz)` coefficients picked from M7 gets us slight better Test_RMSE than OLS M7 by around 0.2\$. I also evaluated the prediction performance of both OLS M7 and Lasso on our hold-out sample. OLS M7 with `r m7_rmse`, and Lasso `r mL_rmse`. Hence, Lasso also wins OLS M7 on hold-out set, by roughly 0.4\$.
 
-```{r, echo=FALSE, fig.align='center'} 
+```{r, echo=FALSE, fig.align='center', fig.width=6, fig.height=4} 
 # Predicted vs Actual prices
 data_holdout$predLp <- mL_p
 
@@ -354,7 +296,7 @@ ggplot( data_holdout , aes( y = price , x = predLp ) ) +
         labs(x='Predicted Daily Price (CA$)',y='Acutal Daily Price (CA$)')+
         theme_minimal()
 ```
-I have also created the above graph to visualize how Lasso performs prediction on hold-out sample. We can see that Lasso does not perform prediction well at extreme values of actual price, even though it is better than OLS models in general.
+I created the above graph to visualize how Lasso performs prediction on hold-out sample. We can see that Lasso does not perform prediction well at extreme values of actual price, even though it is better than OLS models in general.
 
 ### (3) Random Forest
 ```{r, include=FALSE}
@@ -388,7 +330,7 @@ rf_model <- train(
 
 ```
 
-Another method for prediction is regression tree, which can capture interactions and non-linearities automatically. However, it is prone to overfit data, even after pruning. Therefore, I choose to use Random Forest directly here after OLS and Lasso. With the method of Bootstrap Aggregation, 500 trees are created based on similar but not the exact same samples, and then the mean of predicted price is calculated. As I have `r length(predictors_all)` predictors in total, I arbitrarily set for each split, only randomly picked 13 variables (closest to square root of `r length(predictors_all)`) are taken into consideration. In this way, the trees are decorrelated kept independent from each other, and more chance is given to all the predictors. Both bootstrapping and decorrelating trees mean using random sets of information (observations and predictors). By tuning I also arbitrarily set 50 observations for minimum size per terminal node to avoid each tree overfitting to some extent.
+Another method for prediction is regression tree, which can capture interactions and non-linearities automatically. However, it is prone to overfit data, even after pruning. Therefore, I choose to use Random Forest directly here after OLS and Lasso. With the method of Bootstrap Aggregation, 500 trees are created based on similar but not the exact same samples, and then the mean of predicted price is calculated. As I have `r length(predictors_all)` predictors in total, I arbitrarily set for each split, only randomly picked 13 variables (closest to square root of `r length(predictors_all)`) are taken into consideration. In this way, the trees are decorrelated kept independent from each other, and more chance is given to all the predictors. Both bootstrapping and decorrelating trees mean using random sets of information (observations and predictors). By tuning I also arbitrarily set 50 observations for minimum size per terminal node to avoid each tree overfitting to some extent. It turns out Random Forest does better prediction than both OLS and Lasso. In term of Holdout RMSE, Random forest with around 61\$ outperforms Lasso with around 64\$ by around 3\$, which is quite a good improvement.
 
 ### Model Performace Comparison
 ```{r, echo=FALSE}
@@ -459,7 +401,7 @@ result_summary <- result_cv %>% cbind(result_holdout)
 kable(result_summary, booktabs = TRUE) %>% kable_styling(full_width= F, latex_options = c("hold_position","scale_down"))
 ```
 
-From the above summary table, we can tell that Random Forest does better prediction than both OLS and Lasso. In term of Holdout RMSE, Random forest outperforms Lasso by around 3$, which is quite a good improvement.
+
 
 
 # Robustness Check 
@@ -561,8 +503,7 @@ Random Forest gives better performance than OLS and Lasso at predicting quantita
 
 ### Variable Importance
 
-Variable Importance is a sum of gains in terms of MSE reduction by splits involving the variable.
-```{r, echo=FALSE, fig.align='center', fig.dim=c(10,6)}
+```{r, echo=FALSE, fig.align='center', fig.dim=c(10,4)}
 #### Variable importance plot
 ne_rf_model_var_imp <- ranger::importance(ne_rf_model$finalModel)/1000 # scaled it down by 1000
 ne_rf_model_var_imp_df <-
@@ -599,11 +540,6 @@ vi2<-ggplot(ne_rf_model_var_imp_df[1:10,], aes(x=reorder(varname, imp), y=imp_pe
         scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
         theme_minimal()
 
-ggarrange(vi1, vi2, ncol = 2, nrow = 1)
-```
-
-Since there will be too many variables on full variable importance plot, and it would be impossible to see clearly. Here I only set cut off to only show us some variables on the top in terms of variable importance on the left side. And I zoom in to see only top 10 on the right side. Here we can see that number of bedrooms, the maximum capacity and the number of bathrooms are the top 3, which can pass our sanity check. Plus, from the graph on the left we can see there are a lot variable belonging to the same group, such as availability, minimum and maximum nights, etc. To better understand how different variable groups are in terms of importance, I grouped variables in the same category together, such as availability, minimum and maximum nights, general amenities, beauty care brands, digital entertainment, host verifications, etc.
-```{r, echo=FALSE, fig.align='center'}
 # Grouped variable importance
 availabilities_varnames <- grep("n_availability",colnames(data), value = TRUE)
 minmax_nights_varnames <- grep("n_m",colnames(data), value = TRUE)
@@ -637,7 +573,7 @@ ne_rf_model_var_imp_grouped_df <- data.frame(varname = rownames(ne_rf_model_var_
                                             imp = ne_rf_model_var_imp_grouped[,1])  %>%
         mutate(imp_percentage = imp/sum(imp))
 
-ggplot(ne_rf_model_var_imp_grouped_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
+vi3 <- ggplot(ne_rf_model_var_imp_grouped_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
         geom_point(color='#e85d04', size=1) +
         geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color='#2a9d8f', alpha=0.6, size=0.7) +
         ylab("Importance (Percent)") +   xlab("Variable Name") +
@@ -646,49 +582,51 @@ ggplot(ne_rf_model_var_imp_grouped_df, aes(x=reorder(varname, imp), y=imp_percen
         scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
         theme_minimal()
 
+ggarrange(vi2, vi3, ncol = 2, nrow = 1)
 ```
-Before grouping variables, dishwasher is the only one factor among amenities that lies on the top of variable importance plot. However, after grouping, we can see that the sum of importance of all the general amenities variables is actually quite large. And it is the same for minimum and maximum nights and availability variables. They are more importance than the original top 3 after grouping together the variables. Another thing we can see is that although we barely saw individual variables appears at the top variable importance chart, after grouping up, variable groups such as host verification, baby children friendly, outdoor facilities, digital entertainment and beauty care brands do effect price prediction.
+
+Variable Importance is a sum of gains in terms of MSE reduction by splits involving the variable. Since there will be too many variables on full variable importance plot, and it would be impossible to see clearly. Here I only zoom in to see only top 10 on the left side. Here we can see that number of bedrooms, the maximum capacity and the number of bathrooms are the top 3, which can pass our sanity check. On the right side, after grouping, we can see that the sum of importance of all the general amenities variables is actually quite large. And it is the same for minimum and maximum nights and availability variables. They are more importance than the original top 3 after grouping together the variables. Another thing we can see is that variable groups such as host verification, baby children friendly, outdoor facilities, digital entertainment and beauty care brands do have quite some effect on price prediction as groups.
 
 
 ### Partial Dependence
-Next I examine the pattern of association between price and some of the predictor variables. I picked two variables that I would like to know more about and check the pattern: the number of guests to accommodate and property type.
-```{r, echo=FALSE, fig.align='center'}
+
+```{r, include=FALSE}
 # Partial Dependence Plots 
 # Number of accommodates
 pdp_n_acc <- pdp::partial(ne_rf_model, pred.var = "n_accommodates", 
                           pred.grid = distinct_(data_ne_holdout, "n_accommodates"), 
                           train = data_ne_work)
 
-pdp_n_acc %>%
-        autoplot( ) +
-        geom_line(color='#2a9d8f', size=1) +
-        geom_point(color='#e85d04', size=2) +
-        ylab("Predicted price") +
-        xlab("Accommodates (persons)") +
-        scale_x_continuous(limit=c(2,6), breaks=seq(2,6,1))+
-        theme_minimal()
+# #pdp_n_acc %>%
+#         autoplot( ) +
+#         geom_line(color='#2a9d8f', size=1) +
+#         geom_point(color='#e85d04', size=2) +
+#         ylab("Predicted price") +
+#         xlab("Accommodates (persons)") +
+#         scale_x_continuous(limit=c(2,6), breaks=seq(2,6,1))+
+#         theme_minimal()
 ```
 
-```{r, echo=FALSE, fig.align='center'}
+```{r, include=FALSE}
 # Property type
 pdp_n_propertytype <- pdp::partial(ne_rf_model, pred.var = "f_property_type", 
                                pred.grid = distinct_(data_ne_holdout, "f_property_type"), 
                                train = data_ne_work)
-pdp_n_propertytype %>%
-        autoplot( ) +
-        geom_point(color='#e85d04', size=4) +
-        ylab("Predicted price") +
-        xlab("Property type") +
-        scale_y_continuous(limits=c(95,105), breaks=seq(95,105, by=5)) +
-        theme_minimal()+
-        theme(axis.text.x=element_text(angle=45,hjust=1)) 
+# pdp_n_propertytype %>%
+#         autoplot( ) +
+#         geom_point(color='#e85d04', size=4) +
+#         ylab("Predicted price") +
+#         xlab("Property type") +
+#         scale_y_continuous(limits=c(95,105), breaks=seq(95,105, by=5)) +
+#         theme_minimal()+
+#         theme(axis.text.x=element_text(angle=45,hjust=1)) 
 
 ```
-The above plots suggests a pretty linear and positive relationship between predicted price and number of guests. In terms of property types, entire townhouse, entire loft and entire residential home are the top 3 expensive types, whereas entire rental unit is the cheapest type.
+Next I examine the pattern of association between price and some of the predictor variables. I picked two variables that I would like to know more about and check the pattern: the number of guests to accommodate and property type. It turns out there is a pretty linear and positive relationship between predicted price and number of guests. In terms of property types, entire townhouse, entire loft and entire residential home are the top 3 expensive types, whereas entire rental unit is the cheapest type.
 
 ### Performance on Subsamples
-To further investigate the performance of the random forest model, I also look at subsamples by three predictor variables: apartment size, property types and districts. For apartment size, I divide apartments into two group, ones with 2 or 3 guests capacity, and other ones with 4-6 guests. For property types, I arbitrarily pick two that I am more interested in, namely Entire condo and Entire loft. For districts, I choose 5 districts that are located in the inner city, where most investment properties are located. Only calculating RMSE is not meaningful, because RMSE is based on price difference, hence is by definition lower when prices are lower. Therefore, I compared RMSE values relative to the corresponding mean predicted price. 
-```{r, echo=FALSE}
+To further investigate the performance of the random forest model, I also look at subsamples by three predictor variables: apartment size, property types and districts. For apartment size, I divide apartments into two group, ones with 2 or 3 guests capacity, and other ones with 4-6 guests. It turns out prices of small size apartments are slightly harder to predict than medium size apartments. For property types, I arbitrarily pick two that I am more interested in, namely Entire condo and Entire loft. There is not much difference regarding predictive performance among these two property types. For districts, I choose 5 districts that are located in the inner city, where most investment properties are located. It turns out Côte-des-Neiges-Notre-Dame-de-Grâce and Westmount, the two districts at the west part of city center, are harder than other inner city districts to predict price. 
+```{r, include=FALSE}
 # Subsample performance
 data_ne_holdout_w_prediction <- data_ne_holdout %>%
         mutate(predicted_price = predict(ne_rf_model, newdata = data_ne_holdout))
@@ -744,11 +682,8 @@ result_subsamples <- rbind(line2, a, line1, c, line3, b, d) %>%
         transform(RMSE = as.numeric(RMSE), `Mean price` = as.numeric(`Mean price`),
                   `RMSE/price` = as.numeric(`RMSE/price`))
 
-options(knitr.kable.NA = '')
-
-kable(result_subsamples, booktabs = TRUE) %>% kable_styling(full_width= F, latex_options = c("hold_position","scale_down"))
 ```
-We can see from the above table that prices of small size apartments are slightly harder to predict than medium size apartments. However, for condo and loft there is not much difference regarding predictive performance. Besides, Côte-des-Neiges-Notre-Dame-de-Grâce and Westmount, the two districts at the west part of city center, are harder than other inner city districts to predict price. 
+
 
 # Conclusion
-Among 7 OLS models, Lasso and Random Forest, Random Forest has the best prediction performance. By robustness check, I found out by excluding apartments with extreme value prices, prediction performance can be improved significantly. So given that the properties of our company are normal apartments without extraordinary features, I would use Random Forest on data without extreme values of price for prediction. However, we still keep in mind that depending on the location and features the properties of our company, we might have different prediction performance.
+Among 7 OLS models, Lasso and Random Forest, Random Forest has the best prediction performance. By robustness check, I found out by excluding apartments with extreme value prices, prediction performance can be improved significantly. So given that the properties of our company are normal apartments without extraordinary features, I would use Random Forest on data without extreme values of price for prediction. Besides, we should keep in mind that depending on the location and features the properties of our company, we might have different prediction performance. Last but not least, improving amenities, host verification, availability, and other features might enable us to set a relative higher price to generate higher profit for our business.
