@@ -1,15 +1,11 @@
 ---
 title: "Data Analysis 3 - Assignment 2"
-subtitle: "Airbnb Price Prediction - Montreal, Canada"
 author: "Xibei Chen"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   html_document:
-    theme: "readable"
-    #toc: true
-    #toc_depth: 2
-    #toc_float: true
-    code_folding: hide
+    df_print: paged
+subtitle: Airbnb Price Prediction - Montreal, Canada
 ---
 
 ```{r setup, include=FALSE}
@@ -51,9 +47,9 @@ data <- read_csv("/Users/xibei/Documents/2021CEU/DA3/listings_montreal_20211211_
 The purpose of this project is to help a company set price to their new apartments that are not yet on the rental market. The company is operating small and mid-size apartments hosting 2-6 guests in Montreal. To help them set reasonable price,  my approach is to analyze the data of airbnb listings in Montreal on 11th Dec 2021 (the most recent date available) from [Inside Airbnb](http://insideairbnb.com/get-the-data.html) (a website providing fairly cleaned web scrapped data on listings throughout all the major cities of the world) and then I build several price prediction models based on the data with methods, such as OLS, Lasso, and Random Forest. Eventually with prediction performance, interpretability, external validity etc. taken into consideration, I will decide which prediction model to use for helping the company set price to their apartments.
 
 # Data Preparation 
-Data preparation includes mainly three parts: Data Cleaning, Label Engineering, and Feature Engineering. (Please find more details on [Cleaner R script](https://github.com/xibei-chen/DA3/blob/main/assignment_2/montreal_20211211_cleaner.R))
+Data preparation includes mainly three parts: Data Cleaning, Label Engineearing, and Feature Engineearing. (Please find more details on [Cleaner R script](https://github.com/xibei-chen/DA3/blob/main/assignment_2/montreal_20211211_cleaner.R))
 
-### Data Cleaning
+### Data Cleaning 
 Filter Observations:
 
 * With valid Airbnb's unique identifier for the listing;
@@ -61,23 +57,8 @@ Filter Observations:
 * Room type is entire apartment or flat;
 * Property type is entire place (boat and RV excluded).
 
-Change Format:
+Change Format & Handle missing values 
 
-* Remove percentage signs fro, variable host_response_rate and host_acceptance_rate;
-* Remove dollar signs from variable price;
-* Format binary variables from "T/F" to "1/0" for host_is_superhost, host_has_profile_pic, host_identity_verified, instant_bookable, has_availability;
-* Clean bedrooms_text, extract only the number of bedrooms;
-* Transform host_since, first_review and last_review from date to to days difference to today
-
-Handle missing values:
-
-* Drop observations with missing value of target variable price;
-* Drop observations if only with a few missing values (2 or 3 observations);
-* Drop variables with too many missing values: license;
-* Drop variables with missing values but can be substituted by other variable: neighbourhood and host_neighbourhood can be explained by neighbourhood_cleansed which is also a better cleaned variable;
-* Impute missing value of number of beds with accommodates, as both explain the number of guests;
-* Impute missing value of number of bedrooms with the median of number of bedrooms, as it is integer value.
-* Create flag variables for variables with many missing values but I still want to keep in the data, in case they are important for predicting price, and replace missing value with 0: review_scores_rating, review_scores_accuracy, review_scores_cleanliness, review_scores_checkin, review_scores_communication, review_scores_location, review_scores_value, reviews_per_month, host_response_rate, host_acceptance_rate, first_review_to_today, last_review_to_today.
 
 ### Label Engineering & EDA
 Our target variable is the daily price in CA$, which is very straightforward. 
@@ -103,24 +84,13 @@ ggplot( data = data, aes( x = price) )  +
 
 
 ### Feature Engineering
-I create many dummy variables for amenities and host_verifications. And I created following variable groups for further analysis about variable importance. (Please find more details on [Define Variable Groups](https://github.com/xibei-chen/DA3/blob/main/assignment_2/define_var_groups.R))
-
-* amenities includes amenities_general, home_appliance_brands, beauty_care_brands, baby_children_friendly, digital_entertainment, outdoor_facilities;
-* host_verifications.
-
-And I put the following symbols to indicate what type the variable is.
-
-* "d_": dummy variables, includes also "d_missing" which means flag variable for missing value;
-* "f_": factor variables;
-* "n_": numeric variables, includes also "n_p" for percentage variables and "n_dt" for days difference to today.
-
-I have also added following features to capture potential non-linear patterns.
+I create many dummy variables for amenities and host_verifications. And I created following variable groups for further analysis about variable importance. (Please find more details on [Define Variable Groups](https://github.com/xibei-chen/DA3/blob/main/assignment_2/define_var_groups.R)) And I put the symbols such as "d_", "f_" "n_" and to indicate what type the variable is, dummy, factor or numeric. I have also added following features to capture potential non-linear patterns.
 
 * squared_number_of_reviews;
 * cubic_number_of_reviews;
 * ln_host_since_to_today.
 
-Interaction terms below have also been created for modelling with OLS and Lasso, with interaction graphs shown below. We can see that for different property types, the patterns between price and if pets allowed, and if there is pool change. In addition for different neighbourhoods, the patterns between price and if there is free parking and if there is lake access also change. (Here I did not create interaction terms with amenities, because there are so many, it would be super hard to compute because of the lack of computing power)
+Interaction terms below have also been created for modelling with OLS and Lasso, as I see that for different property types, the patterns between price and if pets allowed, and if there is pool change. In addition for different neighbourhoods, the patterns between price and if there is free parking and if there is lake access also change. (Here I did not create interaction terms with amenities, because there are so many, it would be super hard to compute because of the lack of computing power)
 
 * f_property_type*d_pets_allowed;
 * f_property_type*d_pool;
@@ -142,22 +112,14 @@ p4 <- price_diff_by_variables2(data, "f_neighbourhood_cleansed", "d_lake_access"
 # Patterns change
 ```
 
-```{r, echo=FALSE, fig.align='center', fig.dim=c(10,6)}
-ggarrange(p1, p2, ncol = 2, nrow = 1)
-```
-
-```{r, echo=FALSE, fig.align='center', fig.dim=c(8,6)}
-p3
-```
-
-```{r, echo=FALSE, fig.align='center', fig.dim=c(8,6)}
-p4
-```
 
 # Modelling
 
-### Mange different samples:
-Create a holdout set with 20% of observations by random sampling, and the left 80% would be used as work set.
+### Preparation
+
+* Mange different samples: Create a holdout set with 20% of observations by random sampling, and the left 80% would be used as work set;
+* Create multiple predictor levels: basic_lev, basic_add_lev, reviews_lev, poly_log_lev, amenities_general, and two interactions levels X1 and X2.
+
 ```{r, include=FALSE}
 # Manage samples:
 # Create a holdout set (20% of observations)
@@ -178,19 +140,11 @@ data_holdout <- data %>% filter(holdout == 1)
 data_work <- data %>% filter(holdout == 0)
 ```
 
-### Create multiple predictor levels: 
+
 ```{r, include=FALSE}
 # Source from pre-created variable groups
 source("/Users/xibei/Documents/2021CEU/DA3/define_var_groups.R")
 ```
-
-* basic_lev: f_neighbourhood_cleansed, f_property_type, n_accommodates, n_bedrooms, n_beds, n_dt_host_since_to_today;
-* basic_add_lev: n_minimum_nights, n_maximum_nights, d_has_availability, n_availability_30, d_instant_bookable;
-* reviews_lev: n_number_of_reviews, n_review_scores_rating, n_review_scores_cleanliness, n_review_scores_value;
-* poly_log_lev: n_squared_number_of_reviews, n_cubic_number_of_reviews, n_ln_host_since_to_today;
-* amenities_general;
-* X1: f_property_type\*d_pets_allowed, f_property_type\*d_pool
-* X2: f_neighbourhood_cleansed\*d_free_parking, f_neighbourhood_cleansed\*d_lake_access
 
 ```{r, include=FALSE}
 # Basic levels
@@ -301,8 +255,8 @@ ggplot( data = model_results, aes( x = factor( Coefficients ) , group = 1 ) )+
 ```
 From the above graph, we can see that with the increase of OLS model complexity and number of coefficients, both Training and Test RMSE are dropping, which implies that our model might not yet overfit the training data.
 
-### (2) Lasso - Modelling
-```{r}
+### (2) Lasso
+```{r, include=FALSE}
 # Set lasso tuning parameters:
 # a) basic setup
 train_control <- trainControl( method = "cv", number = k_folds)
@@ -323,16 +277,7 @@ lasso_model <- caret::train(formula,
                             na.action=na.exclude)
 ```
 
-For Lasso modelling, we still use the OLS M7 predictors. The elasticnet mixing parameter can be set with 0 ≤ α ≤ 1. We can let machine run different α to find the optimal one. However, to reduce the computing time, here I set alpha=1, which is the lasso penalty. I let machine run lamda from 0.05 to 1 by 0.05, to get the optimal. 
 
-```{r, fig.align='center'}
-# Check the output
-#lasso_model
-# Check th optimal lambda parameter 0.2
-#lasso_model$bestTune$lambda
-# Check the RMSE curve
-plot(lasso_model, col = "#2a9d8f")
-```
 ```{r, include=FALSE}
 # One can get the coefficients as well
 lasso_coeffs <- coef(lasso_model$finalModel, lasso_model$bestTune$lambda) %>%
@@ -351,7 +296,7 @@ lasso_coeffs_nz<-lasso_coeffs %>%
 ```
 
 
-```{r}
+```{r, include=FALSE}
 # Get the RMSE of the Lasso model 
 # Compare this to the test RMSE
 lasso_fitstats <- lasso_model$results %>%
@@ -369,7 +314,7 @@ model_results_lasso <- rbind( model_results , lasso_add )
 kable(model_results_lasso, booktabs = TRUE, caption = 'OLS and Lasso Performance Summary (5-fold CV)') %>% kable_styling(latex_options = c("hold_position","scale_down"))
 ```
 
-It turns out the optimal lambda parameter lies at `r lasso_model$bestTune$lambda`, as shown in the above graph. Besides, we can get the number of coefficients that Lasso picked, which is `r nrow(lasso_coeffs_nz)`. From the summary table, we can tell that Lasso gets us slight better Test_RMSE than OLS M7 by around 0.2$.
+For Lasso modelling, we still use the OLS M7 predictors. The elasticnet mixing parameter can be set with 0 ≤ α ≤ 1. We can let machine run different α to find the optimal one. However, to reduce the computing time, here I set alpha=1, which is the lasso penalty. I let machine run lamda from 0.05 to 1 by 0.05, to get the optimal. It turns out the optimal lambda parameter lies at `r lasso_model$bestTune$lambda`. Besides, we can get the number of coefficients that Lasso picked, which is `r nrow(lasso_coeffs_nz)`. From the summary table above, we can tell that Lasso gets us slight better Test_RMSE than OLS M7 by around 0.2$.
 
 ```{r, include=FALSE}
 # Diagnostics
@@ -396,8 +341,6 @@ kable(sum, booktabs = TRUE) %>% kable_styling(full_width = F, latex_options = c(
 ```
 
 I also evaluated the prediction performance of both OLS M7 and Lasso on our hold-out sample. As we can see from above table, Lasso also wins OLS M7, by roughly 0.4$.
-
-### (2) Lasso - Diagnostics
 
 ```{r, echo=FALSE, fig.align='center'} 
 # Predicted vs Actual prices
@@ -517,7 +460,6 @@ kable(result_summary, booktabs = TRUE) %>% kable_styling(full_width= F, latex_op
 ```
 
 From the above summary table, we can tell that Random Forest does better prediction than both OLS and Lasso. In term of Holdout RMSE, Random forest outperforms Lasso by around 3$, which is quite a good improvement.
-
 
 
 # Robustness Check 
