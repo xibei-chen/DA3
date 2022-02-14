@@ -70,14 +70,14 @@ createLossPlot <- function(r, best_coords,  myheight_small = 5.625, mywidth_smal
   l <- all_coords[all_coords$threshold == t, "loss"]
   
   loss_plot <- ggplot(data = all_coords, aes(x = threshold, y = loss)) +
-    geom_line(color='red', size=0.7) +
+    geom_line(color='#2a9d8f', size=0.7) +
     scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1)) +
-    geom_vline(xintercept = t , color = 'blue' ) +
+    geom_vline(xintercept = t , color = '#e85d04' ) +
     annotate(geom = "text", x = t, y= min(all_coords$loss),
              label=paste0("best threshold: ", round(t,2)),
-             colour='blue', angle=90, vjust = -1, hjust = -0.5, size = 7) +
-    annotate(geom = "text", x = t, y= l,
-             label= round(l, 2), hjust = -0.3, size = 7) +
+             colour='#e85d04', angle=90, vjust = -1, hjust = -0.5, size = 7) +
+    annotate(geom = "text", x = t, y= l, colour="#2a9d8f",
+             label= round(l, 2), hjust = -0.5, size = 7) +
     theme_bw()
   
   loss_plot
@@ -92,13 +92,13 @@ createRocPlotWithOptimal <- function(r, best_coords, file_name,  myheight_small 
   se <- best_coords$sensitivity[1]
   
   roc_plot <- ggplot(data = all_coords, aes(x = specificity, y = sensitivity)) +
-    geom_line(color='red', size=0.7) +
+    geom_line(color='#2a9d8f', size=0.7) +
     scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
     scale_x_reverse(breaks = seq(0, 1, by = 0.1)) +
-    geom_point(aes(x = sp, y = se)) +
-    annotate(geom = "text", x = sp, y = se,
+    geom_point(aes(x = sp, y = se), color= "#e85d04") +
+    annotate(geom = "text", x = sp, y = se, color="#e85d04",
              label = paste(round(sp, 2),round(se, 2),sep = ", "),
-             hjust = 1, vjust = -1, size = 7) +
+             hjust = 1, vjust = -0.5, size = 7) +
     xlab("False Positive Rate (1-Specifity)") +
     ylab("True Positive Rate (Sensitivity)") +
     theme_bw()
