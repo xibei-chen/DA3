@@ -13,7 +13,7 @@ createRocPlot <- function(r, file_name,  myheight_small = 5.625, mywidth_small =
   all_coords <- coords(r, x="all", ret="all", transpose = FALSE)
   
   roc_plot <- ggplot(data = all_coords, aes(x = fpr, y = tpr)) +
-    geom_line(color='red', size = 0.7) +
+    geom_line(color='#e85d04', size = 0.7) +
     geom_area(aes(fill = 'green', alpha=0.4), alpha = 0.3, position = 'identity', color = 'red') +
     scale_fill_viridis(discrete = TRUE, begin=0.6, alpha=0.5, guide = "none") +
     xlab("False Positive Rate (1-Specifity)") +
