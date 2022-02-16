@@ -650,7 +650,26 @@ From the above summary table, we can get following conclusions.
 
 1. As M4 has slightly better CV RMSE than M5, we can say that more complex models do not always generate better predictions, after certain point, including more predictors might result in overfitting training data. 
 2. Our Logit Lasso model gets better CV RMSE than all the above simple Logit models, however it does not get the best CV AUC. This is due to the fact that here the setting for Lasso is to optimize RMSE not AUC.
-3. The model with best prediction performance is Random Forest, as it has the lowest CV RMSE and the highest CV AUC. 
+3. The model with best prediction performance is Random Forest, as it has the lowest CV RMSE and the highest CV AUC.
+
+```{r, include=FALSE}
+# Take best model (RF) and estimate RMSE on holdout
+best_model_no_loss <- logit_models[["Random Forest"]]
+rf_predicted_probabilities_holdout <- predict(best_model_no_loss, newdata = data_holdout, type = "prob")
+data_holdout[,"best_model_no_loss_pred"] <- rf_predicted_probabilities_holdout[,"fast_growing"]
+RMSE(data_holdout[, "best_model_no_loss_pred", drop=TRUE], data_holdout$fast_growing) # 0.4595446
+```
+
+Since random forest is our best performing model, we also calculated its RMSE on the holdout set which equals to 0.46 just about the same as its CV RMSE in the training data. Furthermore, we also created a calibration curve for the model using its predictions for the holdout set and the actual probabilities. We can see on the plot below that in general it is relatively well calibrated in the middle. However, there are larger gap between the green line and the 45 degree orange line at the beginning and the end, indicating our prediction is not performing quite well in case of probabilities closer to 0 or 1.
+
+```{r, fig.align='center'}
+# Plot calibration curve
+create_calibration_plot(data_holdout, 
+                        prob_var = "best_model_no_loss_pred", 
+                        actual_var = "fast_growing",
+                        n_bins = 10)
+```
+
 
 # Classification
 For turning predicted probabilities into classifications, we need a classification threshold. To determine the threshold, we need to define our loss function. Then we can look for the optimal threshold in each model. Eventually we can decide which model is the best model based on lowest average expected loss.
@@ -781,7 +800,7 @@ knitr::kable(cm_round, caption = "Confusion matrix for best model random forest 
 According to the matrix, the rate of FP is 45%, while the rate of FN is 4%. This is due to the cost functions we defined. So the ratio of the less costly false decision is higher than the more costly false decision. To sum up, the accuracy of this classification is only around 51%, which is not an ideal classification, as it is just a bit better than random guessing.
 
 # Random Forest Classification on Different Industries
-The dataset covers two industry categories: Manufacturing (ind2 26-33), and Accommodation and Food Service Activities (ind2 55-56). As an extra task for pair work, we separated the two industries in holdout sample to random forest classification performance. Firstly we explored the difference between two samples in terms of number of firms and share of fast growing firms. As shown in below graph, there are 2178 firms in Accommodation and Food Service, whereas 980 firms are in Manufacturing. Furthermore, in Accommodation and Food Service, there are around 36% firms that are defined as fast growing. And in Manufacturing, fast growing firms make up about 41%. Therefore, despite there is quite large difference regarding the total number of firms in different industries, the share of fast growing firms are relative close.
+The dataset covers two industry categories: Manufacturing (ind2 26-33), and Accommodation and Food Service Activities (ind2 55-56). As an extra task for pair work, we separated the two industries in holdout sample to random forest classification performance. Firstly we explored the difference between two samples in terms of the percentage of number of firms and share of fast growing firms. As shown in below graph, the number of firms in Accommodation and Food Service almost double the number of firms in Manufacturing. Furthermore, in Accommodation and Food Service, there are around 36% firms that are defined as fast growing. And in Manufacturing, fast growing firms make up about 41%. Therefore, despite there is quite large difference regarding the total number of firms in different industries, the share of fast growing firms are relative close.
 
 ```{r, fig.align='center', fig.dim=c(5,4)}
 # Create data set for manufacturing, accommodation and food services separately
@@ -792,47 +811,21 @@ data_a <- data_holdout %>% filter(ind2 %in% c('55','56'))
 data_m$ind2 <- droplevels(data_m$ind2)
 data_a$ind2 <- droplevels(data_a$ind2)
 
-data_ind <- data_holdout %>% mutate(ind= ifelse(data_holdout$ind2 %in% c('55','56'), 'a','m')) %>% select(ind)
-ggplot(data=data_ind, aes(x=ind))+
-        geom_bar(fill = '#2a9d8f',alpha=0.6) +
-        annotate("text", size=6, colour="#e85d04",x='a', y=nrow(data_a), label= nrow(data_a))+
-        annotate("text", size=6, colour="#e85d04",x='m', y=nrow(data_m), label= nrow(data_m))+
-        labs(y='Number of Firms', x='a: Accommodation and Food Servie         m: Manufacturing')+
+data_ind <- data_holdout %>% mutate(ind= ifelse(data_holdout$ind2 %in% c('55','56'), 'a','m')) %>% group_by(ind,fast_growing_f) %>% count() %>% group_by((ind)) %>% mutate(percent= round(n/sum(n),2))
+
+ggplot(data=data_ind, aes(x=ind, y=n, fill=fast_growing_f, label = percent))+
+        geom_bar(position = position_stack(), stat = "identity", alpha=0.8)+
+        geom_text(aes(label=percent), size = 5, vjust=0.9, color="white", position=position_stack(vjust=0.5)) +
+        scale_fill_manual(values = c("#e85d04", "#2a9d8f"))+
+        labs(y='Percentage of Number of Firms', x='a: Accommodation and Food Servie           m: Manufacturing')+
         ggtitle('Number of Firms in Different Industry')+
         theme_minimal()+
-        theme(plot.title = element_text(hjust = 0.5))
+        theme(plot.title = element_text(hjust = 0.5),
+              legend.position= "top",
+              legend.direction = "horizontal",
+              legend.title = element_blank())
 ```
 
-
-```{r, echo=FALSE, fig.align='center', fig.dim=c(8,4)}
-
-h1 <- ggplot( data = data_a , aes( x = fast_growing,label=  ..count.. / sum( count ) ) ) +
-        geom_histogram( aes( y = ..count.. / sum( count ) ) , size = 1 , fill = '#2a9d8f',alpha=0.6,color="white",
-                        bins = 2)+
-        annotate("text", size=6, colour="#e85d04",x=1, y=0.37, label= round(nrow(data_a %>% filter(fast_growing==1))/nrow(data_a),2 ))+
-        annotate("text", size=6, colour="#e85d04",x=0, y=0.63, label= round(nrow(data_a %>% filter(fast_growing==0))/nrow(data_a),2 ))+
-        labs(y='Probabilities',x='0: Not Fast Growing                   1: Fast Growing')+
-        ylim(0,1) +
-        ggtitle('Accommodation and Food Service')+
-        theme_minimal()+
-        theme(axis.text.x=element_blank(),
-              plot.title = element_text(hjust = 0.5))
-
-
-h2 <- ggplot( data = data_m , aes( x = fast_growing,label=  ..count.. / sum( count ) ) ) +
-        geom_histogram( aes( y = ..count.. / sum( count ) ) , size = 1 , fill = '#2a9d8f',alpha=0.6,color="white",
-                        bins = 2)+
-        annotate("text", size=6, colour="#e85d04",x=1, y=0.4, label= round(nrow(data_m %>% filter(fast_growing==1))/nrow(data_m),2 ))+
-        annotate("text", size=6, colour="#e85d04",x=0, y=0.6, label= round(nrow(data_m %>% filter(fast_growing==0))/nrow(data_m),2 ))+
-        labs(y='Probabilities',x='0: Not Fast Growing                  1: Fast Growing')+
-        ylim(0,1) +
-        ggtitle('Manufacturing')+
-        theme_minimal()+
-        theme(axis.text.x=element_blank(),
-              plot.title = element_text(hjust = 0.5))
-
-ggarrange(h1, h2,  ncol = 2, nrow = 1) 
-```
 
 
 ```{r}
