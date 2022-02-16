@@ -14,7 +14,7 @@ createRocPlot <- function(r, file_name,  myheight_small = 5.625, mywidth_small =
   
   roc_plot <- ggplot(data = all_coords, aes(x = fpr, y = tpr)) +
     geom_line(color='#e85d04', size = 0.7) +
-    geom_area(aes(fill = 'green', alpha=0.4), alpha = 0.3, position = 'identity', color = 'red') +
+    geom_area(aes(fill = '#2a9d8f', alpha=0.4), alpha = 0.3, position = 'identity', color = 'red') +
     scale_fill_viridis(discrete = TRUE, begin=0.6, alpha=0.5, guide = "none") +
     xlab("False Positive Rate (1-Specifity)") +
     ylab("True Positive Rate (Sensitivity)") +
@@ -43,9 +43,9 @@ create_calibration_plot <- function(data, prob_var, actual_var, y_lab = "Actual 
     summarise(mean_prob = mean(!!as.name(prob_var)), mean_actual = mean(!!as.name(actual_var)), n = n())
   
   p <- ggplot(data = binned_data) +
-    geom_line(aes(mean_prob, mean_actual), color='red', size=0.6, show.legend = TRUE) +
-    geom_point(aes(mean_prob,mean_actual), color = 'red', size = 1, shape = 16, alpha = 0.7, show.legend=F, na.rm = TRUE) +
-    geom_segment(x=min(breaks), xend=max(breaks), y=min(breaks), yend=max(breaks), color='blue', size=0.3) +
+    geom_line(aes(mean_prob, mean_actual), color='#2a9d8f', size=0.6, show.legend = TRUE) +
+    geom_point(aes(mean_prob,mean_actual), color = '#2a9d8f', size = 1, shape = 16, alpha = 0.7, show.legend=F, na.rm = TRUE) +
+    geom_segment(x=min(breaks), xend=max(breaks), y=min(breaks), yend=max(breaks), color='#e85d04', size=0.3) +
     theme_bw() +
     labs(x= "Predicted event probability",
          y= y_lab) +
